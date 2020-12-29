@@ -10,5 +10,9 @@ npm-debug.log*
 # Webstorm config
 /.idea
 
+# Coverage
+/.nyc_output
+/coverage
+
 # TS incremental build data
 .tsbuildinfo
