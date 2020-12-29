@@ -1,0 +1,11 @@
+# dependencies
+/node_modules
+
+# Misc
+npm-debug.log*
+
+# Webstorm config
+/.idea
+
+# TS incremental build data
+.tsbuildinfo
