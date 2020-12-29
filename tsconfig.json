@@ -1,0 +1,40 @@
+{
+  "compilerOptions": {
+    "outDir": "./build",
+    "module": "commonjs",
+    "target": "es6",
+    "sourceMap": true,
+    "types": [
+      "node",
+      "mocha",
+    ],
+    "incremental": true,
+    "tsBuildInfoFile": "./.tsbuildinfo/buildinfo",
+    "lib": ["esnext"],
+    "esModuleInterop": false,
+    "allowSyntheticDefaultImports": false,
+    "downlevelIteration": false,
+    "moduleResolution": "node",
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "strict": true,
+    "baseUrl": "src",
+    "allowJs": false,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "importHelpers": true,
+    "noEmitHelpers": true,
+    "noEmitOnError": true,
+    "noUncheckedIndexedAccess": true,
+    "allowUnreachableCode": false,
+    "forceConsistentCasingInFileNames": true,
+  },
+  "exclude": [
+    "node_modules"
+  ]
+}
