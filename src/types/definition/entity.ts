@@ -1,14 +1,16 @@
 import { DataPrimitive, PrimitiveValue } from "./primitives";
 import { DataRelation, HasMany, HasOne } from "./relations";
+import { Object } from "ts-toolbelt";
 
 export type EntityDef<T> = new () => T;
 export type EntityRestriction<T> = { [P in keyof T]: T[P] extends DataPrimitive | DataRelation ? T[P] : never };
-export type EntityOf<T extends EntityRestriction<T>> = { [P in keyof T]:
-      T[P] extends DataPrimitive ? PrimitiveValue<T[P]>
+export type EntityOf<T extends EntityRestriction<T>> = { id: Id<T> } & { [P in keyof T]:
+      T[P] extends DataPrimitive ? PrimitiveValue<T[P]> | null
     : T[P] extends HasOne<infer One> ? (One extends EntityRestriction<One> ? EntityOf<One> | null : never)
     : T[P] extends HasMany<infer Many, any> ? (Many extends EntityRestriction<Many> ? Array<EntityOf<Many>> : never)
     : never
 };
+export type PartialEntity<T extends EntityRestriction<T>> = Object.Partial<EntityOf<T>, "deep">;
 
 export const entityMetadataKey = Symbol("chicken-katsu:entity");
 export const entity = () => <T>(target: new () => EntityRestriction<T>) => {

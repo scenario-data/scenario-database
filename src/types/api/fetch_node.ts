@@ -11,5 +11,5 @@ type FetchNodePropHandling<T extends DataRelation | InternalFKPrimitive> =
     : T extends InternalFKPrimitive ? InternalFKPrimitiveRequestNode<T>
     : never;
 
-export type FetchNodeUnchecked<Entity> = { [P in KeysHaving<DataRelation | InternalFKPrimitive, Entity>]?: FetchNodePropHandling<Entity[P]> };
+type FetchNodeUnchecked<Entity> = { [P in KeysHaving<DataRelation | InternalFKPrimitive, Entity>]?: FetchNodePropHandling<Entity[P]> };
 export type FetchNode<Entity extends EntityRestriction<Entity>> = FetchNodeUnchecked<Entity>;

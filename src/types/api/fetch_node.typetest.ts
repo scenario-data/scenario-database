@@ -1,23 +1,7 @@
-import { primitiveBranch, primitiveInt } from "../definition/primitives";
-import { hasMany, hasOne } from "../definition/relations";
-import { entity } from "../definition/entity";
 import { FetchNode } from "./fetch_node";
+import { TestTarget } from "./_test_universe";
 
-@entity()
-class Target {
-    public tgtProp = primitiveInt();
-    public one = hasOne(() => Relation);
-    public many = hasMany(() => Relation, "target");
-}
-
-@entity()
-class Relation {
-    public relProp = primitiveInt();
-    public internalFK = primitiveBranch();
-    public target = hasOne(() => Target);
-}
-
-declare function test(node: FetchNode<Target>): void;
+declare function test(node: FetchNode<TestTarget>): void;
 
 // Traversing relations
 test({

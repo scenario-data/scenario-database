@@ -1,45 +1,29 @@
-import { asId, entity } from "../definition/entity";
-import { primitiveBranch, primitiveInt } from "../definition/primitives";
-import { hasMany, hasOne } from "../definition/relations";
+import { asId } from "../definition/entity";
 import { DatabaseRead, ReadRequest } from "./read";
 import { asVersionId, masterBranchId } from "../temporal";
-import { UniverseRestriction } from "./universe";
 import { FetchResponse } from "./fetch_response";
 import { FetchNode } from "./fetch_node";
-
-@entity()
-class Target {
-    public tgtProp = primitiveInt();
-    public one = hasOne(() => Relation);
-    public many = hasMany(() => Relation, "target");
-}
-
-@entity()
-class Relation {
-    public relProp = primitiveInt();
-    public internalFK = primitiveBranch();
-    public target = hasOne(() => Target);
-}
+import { TestRelation, TestTarget, TestUniverse } from "./_test_universe";
 
 declare function is<Expected = never>(actual: Expected): void;
-declare function request<Relations extends FetchNode<Target>>(val: ReadRequest<Target, Relations>): void;
+declare function request<Relations extends FetchNode<TestTarget>>(val: ReadRequest<TestTarget, Relations>): void;
 
 request({
-    type: Target,
+    type: TestTarget,
     branch: masterBranchId,
     ids: [asId("1")],
     relations: {},
 });
 
 request({
-    type: Target,
+    type: TestTarget,
     branch: masterBranchId,
     ids: [asId("1")],
     relations: { one: { target: { many: {} } } },
 });
 
 request({
-    type: Target,
+    type: TestTarget,
     at: asVersionId("0"),
     ids: [asId("1")],
     relations: { one: { target: { many: {
@@ -49,31 +33,29 @@ request({
 });
 
 
-declare function createUniverse<U extends UniverseRestriction<U>>(u: U): U;
-const universe = createUniverse({ Target, Relation });
 
-declare const read: DatabaseRead<typeof universe>;
+declare const read: DatabaseRead<TestUniverse>;
 read({
     norelations: {
-        type: Target,
+        type: TestTarget,
         ids: [asId("1"), asId("2")],
         branch: masterBranchId,
         relations: {},
     },
     somerelations: {
-        type: Relation,
+        type: TestRelation,
         ids: [asId("1"), asId("2")],
         branch: masterBranchId,
         relations: { target: { one: { target: { many: {} } } } },
     },
 }).then(res => {
-    is<FetchResponse<Target, {}>>(res.norelations[0]!);
-    is<FetchResponse<Relation, { target: { one: { target: { many: {} } } } }>>(res.somerelations[0]!);
+    is<FetchResponse<TestTarget, {}>>(res.norelations[0]!);
+    is<FetchResponse<TestRelation, { target: { one: { target: { many: {} } } } }>>(res.somerelations[0]!);
 });
 
 read({
     incorrect: {
-        type: Target,
+        type: TestTarget,
         ids: [asId("1"), asId("2")],
         branch: masterBranchId,
         relations: { one: { target: { many: { target: {

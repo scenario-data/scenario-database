@@ -6,7 +6,7 @@ import { EntityRestriction, Id } from "../definition/entity";
 import { VersionId } from "../temporal";
 import { LocalDateTime } from "js-joda";
 import { UserId } from "../user";
-import { FetchNodeUnchecked, InternalFKPrimitiveRequestNode } from "./fetch_node";
+import { FetchNode, InternalFKPrimitiveRequestNode } from "./fetch_node";
 
 type InternalFKPrimitiveResponseNode<Shape, Node> = {
     [P in Exclude<keyof Shape, KeysHaving<InternalFKPrimitive, Shape>>]: Shape[P]
@@ -19,8 +19,8 @@ type InternalFKPrimitiveFetchResponseUnchecked<T extends InternalFKPrimitive, No
 export type InternalFKPrimitiveFetchResponse<T extends InternalFKPrimitive, Node extends InternalFKPrimitiveRequestNode<T>> = InternalFKPrimitiveFetchResponseUnchecked<T, Node>;
 
 type ResolveResponseNode<T, Node> =
-      T extends HasOne<infer One> ? (Node extends FetchNodeUnchecked<One> ? (One extends EntityRestriction<One> ? FetchResponseUnchecked<One, Node> | null : never) : never)
-    : T extends HasMany<infer Many, any> ? (Node extends FetchNodeUnchecked<Many> ? (Many extends EntityRestriction<Many> ? FetchResponseUnchecked<Many, Node>[] : never) : never)
+      T extends HasOne<infer One> ? (One extends EntityRestriction<One> ? (Node extends FetchNode<One> ? FetchResponseUnchecked<One, Node> | null : never) : never)
+    : T extends HasMany<infer Many, any> ? (Many extends EntityRestriction<Many> ? (Node extends FetchNode<Many> ? FetchResponseUnchecked<Many, Node>[] : never) : never)
     : T extends InternalFKPrimitive ? InternalFKPrimitiveFetchResponseUnchecked<T, Node>
     : never;
 type FetchResponseUnchecked<Entity extends EntityRestriction<Entity>, Request> = {
@@ -36,4 +36,4 @@ type FetchResponseUnchecked<Entity extends EntityRestriction<Entity>, Request> =
     // Relation keys will exist if requested
     [P in Extract<keyof Defined<Request>, keyof Entity>]-?: ResolveResponseNode<Entity[P], Defined<Request>[P]>
 };
-export type FetchResponse<Entity extends EntityRestriction<Entity>, Request extends FetchNodeUnchecked<Entity>> = FetchResponseUnchecked<Entity, Request>;
+export type FetchResponse<Entity extends EntityRestriction<Entity>, Request extends FetchNode<Entity>> = FetchResponseUnchecked<Entity, Request>;
