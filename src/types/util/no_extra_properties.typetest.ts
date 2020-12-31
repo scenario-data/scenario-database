@@ -30,6 +30,13 @@ test({
 
 test({
     prop: 1,
+
+    // @ts-expect-error — Unnecessary property
+    asdfsfasdf: undefined,
+});
+
+test({
+    prop: 1,
     ref: {
         prop: 2,
         ref: {
