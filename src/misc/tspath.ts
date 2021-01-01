@@ -1,7 +1,7 @@
 import { memoize } from "lodash";
 import { KeyShape } from "./shape";
 import { objectKeys } from "./typeguards";
-import { KeysHaving } from "../types/util/misc";
+import { KeysHaving } from "./misc";
 
 
 interface PathAPI {

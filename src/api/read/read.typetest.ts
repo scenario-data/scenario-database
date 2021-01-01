@@ -1,9 +1,9 @@
-import { asId } from "../definition/entity";
-import { DatabaseRead, ReadRequest } from "./read";
-import { asVersionId, masterBranchId } from "../temporal";
-import { FetchResponse } from "./fetch_response";
-import { FetchNode } from "./fetch_node";
-import { TestRelation, TestTarget, TestUniverse } from "./_test_universe";
+import { asId } from "../../definition/entity";
+import { DatabaseRead, ReadRequest } from "./read_api";
+import { asVersionId, masterBranchId } from "../../temporal";
+import { FetchResponse } from "../fetch_types/fetch_response";
+import { FetchNode } from "../fetch_types/fetch_node";
+import { TestRelation, TestTarget, TestUniverse } from "../_test_universe";
 
 declare function is<Expected = never>(actual: Expected): void;
 declare function request<Relations extends FetchNode<TestTarget>>(val: ReadRequest<TestTarget, Relations>): void;

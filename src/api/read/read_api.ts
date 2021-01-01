@@ -1,10 +1,10 @@
 import { Any } from "ts-toolbelt";
-import { EntityDef, EntityRestriction, Id } from "../definition/entity";
-import { FetchNode } from "./fetch_node";
-import { NoExtraProperties } from "../util/no_extra_properties";
-import { BranchId, VersionId } from "../temporal";
-import { UniverseElement, UniverseRestriction } from "./universe";
-import { FetchResponse } from "./fetch_response";
+import { EntityDef, EntityRestriction, Id } from "../../definition/entity";
+import { FetchNode } from "../fetch_types/fetch_node";
+import { NoExtraProperties } from "../../misc/no_extra_properties";
+import { BranchId, VersionId } from "../../temporal";
+import { UniverseElement, UniverseRestriction } from "../universe";
+import { FetchResponse } from "../fetch_types/fetch_response";
 
 interface ReadRequestData<Entity extends EntityRestriction<Entity>, Relations extends FetchNode<Entity>> {
     type: EntityDef<Entity>;

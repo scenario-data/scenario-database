@@ -3,7 +3,7 @@ import { IndexPath } from "./path";
 import { ApplicableSearchConditions, KnownSearchConditionTypes } from "./search_conditions";
 import { IndexTarget } from "./target";
 import { Any } from "ts-toolbelt";
-import { AtLeastOne } from "../../../misc/typeguards";
+import { AtLeastOne } from "../../misc/typeguards";
 
 
 type TargetConditions<Target extends IndexTarget> = AtLeastOne<ApplicableSearchConditions<Target>["type"]>;

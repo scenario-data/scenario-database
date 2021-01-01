@@ -1,7 +1,7 @@
 import { UniverseRestriction } from "./universe";
-import { DatabaseRead } from "./read";
-import { DatabaseWrite } from "./write";
-import { DatabaseSearch } from "./search";
+import { DatabaseRead } from "./read/read_api";
+import { DatabaseWrite } from "./write/write_api";
+import { DatabaseSearch } from "./search/search_api";
 import { UserId } from "../user";
 import { BranchId, VersionId } from "../temporal";
 

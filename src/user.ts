@@ -1,4 +1,4 @@
-import { Notional } from "./util/misc";
+import { Notional } from "./misc/misc";
 
 export type UserId = Notional<string, "user">;
 export const asUserId = (str: string): UserId => str as any;

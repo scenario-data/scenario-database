@@ -1,11 +1,11 @@
 import { Any } from "ts-toolbelt";
-import { EntityDef, EntityRestriction, PartialEntity } from "../definition/entity";
-import { BranchId } from "../temporal";
-import { UserId } from "../user";
-import { FetchNode } from "./fetch_node";
-import { NoExtraProperties } from "../util/no_extra_properties";
-import { UniverseElement, UniverseRestriction } from "./universe";
-import { FetchResponse } from "./fetch_response";
+import { EntityDef, EntityRestriction, PartialEntity } from "../../definition/entity";
+import { BranchId } from "../../temporal";
+import { UserId } from "../../user";
+import { FetchNode } from "../fetch_types/fetch_node";
+import { NoExtraProperties } from "../../misc/no_extra_properties";
+import { UniverseElement, UniverseRestriction } from "../universe";
+import { FetchResponse } from "../fetch_types/fetch_response";
 
 
 export type WriteRequest<

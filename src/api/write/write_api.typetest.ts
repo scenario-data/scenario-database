@@ -1,10 +1,10 @@
-import { TestTarget, TestUniverse } from "./_test_universe";
-import { DatabaseWrite, WriteRequest } from "./write";
-import { masterBranchId } from "../temporal";
-import { rootUserId } from "../user";
-import { FetchResponse } from "./fetch_response";
-import { asId } from "../definition/entity";
-import { FetchNode } from "./fetch_node";
+import { TestTarget, TestUniverse } from "../_test_universe";
+import { DatabaseWrite, WriteRequest } from "./write_api";
+import { masterBranchId } from "../../temporal";
+import { rootUserId } from "../../user";
+import { FetchResponse } from "../fetch_types/fetch_response";
+import { asId } from "../../definition/entity";
+import { FetchNode } from "../fetch_types/fetch_node";
 
 declare function is<Expected = never>(actual: Expected): void;
 declare function request<Relations extends FetchNode<TestTarget>>(val: WriteRequest<TestTarget, Relations>): void;

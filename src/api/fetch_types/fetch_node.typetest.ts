@@ -1,5 +1,5 @@
 import { FetchNode } from "./fetch_node";
-import { TestTarget } from "./_test_universe";
+import { TestTarget } from "../_test_universe";
 
 declare function test(node: FetchNode<TestTarget>): void;
 

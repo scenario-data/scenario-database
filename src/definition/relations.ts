@@ -1,5 +1,5 @@
 import { EntityDef } from "./entity";
-import { KeysHaving } from "../util/misc";
+import { KeysHaving } from "../misc/misc";
 
 export type DataRelation = HasOne<any> | HasMany<any, string>;
 const relationTypeKey: keyof DataRelation = "relation_type";

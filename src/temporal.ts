@@ -1,4 +1,4 @@
-import { Notional } from "./util/misc";
+import { Notional } from "./misc/misc";
 
 export type VersionId = Notional<string, "version">;
 export const asVersionId = (str: string): VersionId => str as any;

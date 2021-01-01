@@ -1,10 +1,10 @@
-import { DatabaseSearch } from "./search";
-import { TestTarget, TestUniverse } from "./_test_universe";
-import { IndexDefinitionFn } from "../definition/index";
-import { indexPath } from "../definition/index/path";
-import { IndexRequestBuilder } from "../definition/index/search_request";
-import { masterBranchId } from "../temporal";
-import { FetchResponse } from "./fetch_response";
+import { DatabaseSearch } from "./search_api";
+import { TestTarget, TestUniverse } from "../_test_universe";
+import { IndexDefinitionFn } from "../../definition/index";
+import { indexPath } from "../../definition/index/path";
+import { IndexRequestBuilder } from "../../definition/index/search_request";
+import { masterBranchId } from "../../temporal";
+import { FetchResponse } from "../fetch_types/fetch_response";
 
 
 declare function is<Expected = never>(actual: Expected): void;

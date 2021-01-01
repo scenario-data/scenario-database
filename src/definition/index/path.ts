@@ -1,8 +1,8 @@
 import { DataPrimitive } from "../primitives";
 import { EntityRestriction } from "../entity";
-import { path, Path } from "../../../misc/tspath";
-import { InternalFKPrimitive, InternalFKPrimitiveShape, InternalFKRef } from "../../api/internal_foreign_keys";
-import { KeysHaving } from "../../util/misc";
+import { path, Path } from "../../misc/tspath";
+import { InternalFKPrimitive, InternalFKPrimitiveShape, InternalFKRef } from "../../api/fetch_types/internal_foreign_keys";
+import { KeysHaving } from "../../misc/misc";
 import { HasOne } from "../relations";
 import { IndexTarget } from "./target";
 

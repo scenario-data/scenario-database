@@ -1,11 +1,11 @@
-import { Defined, KeysHaving } from "../util/misc";
+import { Defined, KeysHaving } from "../../misc/misc";
 import { InternalFKPrimitive, InternalFKPrimitiveResultShape } from "./internal_foreign_keys";
-import { DataPrimitive, PrimitiveValue } from "../definition/primitives";
-import { HasMany, HasOne } from "../definition/relations";
-import { EntityRestriction, Id } from "../definition/entity";
-import { VersionId } from "../temporal";
+import { DataPrimitive, PrimitiveValue } from "../../definition/primitives";
+import { HasMany, HasOne } from "../../definition/relations";
+import { EntityRestriction, Id } from "../../definition/entity";
+import { VersionId } from "../../temporal";
 import { LocalDateTime } from "js-joda";
-import { UserId } from "../user";
+import { UserId } from "../../user";
 import { FetchNode, InternalFKPrimitiveRequestNode } from "./fetch_node";
 
 type InternalFKPrimitiveResponseNode<Shape, Node> = {

@@ -4,7 +4,7 @@ import {
     PrimitiveLocalDateTime,
     PrimitiveUser, PrimitiveValue,
     PrimitiveVersion
-} from "../definition/primitives";
+} from "../../definition/primitives";
 
 export type InternalFKPrimitive = PrimitiveBranch | PrimitiveUser;
 export type InternalFKRef<T extends InternalFKPrimitive> = { ref: T };

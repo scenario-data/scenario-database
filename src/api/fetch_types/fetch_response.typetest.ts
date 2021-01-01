@@ -1,11 +1,11 @@
-import { Id } from "../definition/entity";
-import { PrimitiveBranch } from "../definition/primitives";
+import { Id } from "../../definition/entity";
+import { PrimitiveBranch } from "../../definition/primitives";
 import { FetchNode } from "./fetch_node";
 import { FetchResponse, InternalFKPrimitiveFetchResponse } from "./fetch_response";
-import { BranchId, VersionId } from "../temporal";
+import { BranchId, VersionId } from "../../temporal";
 import { LocalDateTime } from "js-joda";
-import { UserId } from "../user";
-import { TestRelation, TestTarget } from "./_test_universe";
+import { UserId } from "../../user";
+import { TestRelation, TestTarget } from "../_test_universe";
 
 declare function response<T extends FetchNode<TestTarget>>(val: T): FetchResponse<TestTarget, T>;
 declare function is<Expected = never>(actual: Expected): void;
