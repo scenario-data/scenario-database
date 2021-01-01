@@ -1,9 +1,9 @@
-import { InternalFKPrimitive, InternalFKPrimitiveShape } from "./internal_foreign_keys";
+import { InternalFKPrimitive, InternalFKPrimitiveResultShape } from "./internal_foreign_keys";
 import { KeysHaving } from "../util/misc";
 import { EntityRestriction } from "../definition/entity";
 import { DataRelation, RelationTarget } from "../definition/relations";
 
-export type InternalFKPrimitiveRequestNode<T extends InternalFKPrimitive> = FetchNodeUnchecked<InternalFKPrimitiveShape<T>>;
+export type InternalFKPrimitiveRequestNode<T extends InternalFKPrimitive> = FetchNodeUnchecked<InternalFKPrimitiveResultShape<T>>;
 
 type FetchNodeIfEtty<T> = T extends EntityRestriction<T> ? FetchNodeUnchecked<T> : never;
 type FetchNodePropHandling<T extends DataRelation | InternalFKPrimitive> =

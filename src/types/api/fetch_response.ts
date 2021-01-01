@@ -1,5 +1,5 @@
 import { Defined, KeysHaving } from "../util/misc";
-import { InternalFKPrimitive, InternalFKPrimitiveShape } from "./internal_foreign_keys";
+import { InternalFKPrimitive, InternalFKPrimitiveResultShape } from "./internal_foreign_keys";
 import { DataPrimitive, PrimitiveValue } from "../definition/primitives";
 import { HasMany, HasOne } from "../definition/relations";
 import { EntityRestriction, Id } from "../definition/entity";
@@ -15,7 +15,7 @@ type InternalFKPrimitiveResponseNode<Shape, Node> = {
 } & {
     [P in Extract<keyof Defined<Node>, KeysHaving<InternalFKPrimitive, Shape>>]: InternalFKPrimitiveFetchResponseUnchecked<Shape[P], Defined<Node>[P]>
 };
-type InternalFKPrimitiveFetchResponseUnchecked<T extends InternalFKPrimitive, Node> = InternalFKPrimitiveResponseNode<InternalFKPrimitiveShape<T>, Node>;
+type InternalFKPrimitiveFetchResponseUnchecked<T extends InternalFKPrimitive, Node> = InternalFKPrimitiveResponseNode<InternalFKPrimitiveResultShape<T>, Node>;
 export type InternalFKPrimitiveFetchResponse<T extends InternalFKPrimitive, Node extends InternalFKPrimitiveRequestNode<T>> = InternalFKPrimitiveFetchResponseUnchecked<T, Node>;
 
 type ResolveResponseNode<T, Node> =

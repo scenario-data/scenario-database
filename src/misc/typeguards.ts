@@ -22,7 +22,8 @@ export const isArrayOf = <T>(check: (val: any) => val is T) => (val: any[]): val
 
 
 export const identity = <T>(x: T): T => x;
-export function atLeastOne<T>(arr: readonly T[]): [T, ...T[]] {
+export type AtLeastOne<T> = [T, ...T[]];
+export function atLeastOne<T>(arr: readonly T[]): AtLeastOne<T> {
     if (arr.length === 0) { throw new Error("Empty array"); }
     return [arr[0]!, ...arr.slice(1)];
 }

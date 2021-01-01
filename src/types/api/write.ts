@@ -1,6 +1,5 @@
 import { Any } from "ts-toolbelt";
-import { EntityRestriction, PartialEntity } from "../definition/entity";
-import { Ctor } from "../util/misc";
+import { EntityDef, EntityRestriction, PartialEntity } from "../definition/entity";
 import { BranchId } from "../temporal";
 import { UserId } from "../user";
 import { FetchNode } from "./fetch_node";
@@ -13,7 +12,7 @@ export type WriteRequest<
     Entity extends EntityRestriction<Entity>,
     Relations extends FetchNode<Entity>
 > = {
-    type: Ctor<Entity>,
+    type: EntityDef<Entity>,
     branch: BranchId,
 
     by: UserId;

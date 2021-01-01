@@ -1,14 +1,13 @@
 import { Any } from "ts-toolbelt";
-import { EntityRestriction, Id } from "../definition/entity";
+import { EntityDef, EntityRestriction, Id } from "../definition/entity";
 import { FetchNode } from "./fetch_node";
-import { Ctor } from "../util/misc";
 import { NoExtraProperties } from "../util/no_extra_properties";
 import { BranchId, VersionId } from "../temporal";
 import { UniverseElement, UniverseRestriction } from "./universe";
 import { FetchResponse } from "./fetch_response";
 
 interface ReadRequestData<Entity extends EntityRestriction<Entity>, Relations extends FetchNode<Entity>> {
-    type: Ctor<Entity>;
+    type: EntityDef<Entity>;
     relations: Any.Cast<Relations, NoExtraProperties<FetchNode<Entity>, Relations>>;
 }
 
