@@ -5,7 +5,7 @@ import {
     RemoveTypeMigration, RenameFieldMigration
 } from "../../definition/migrations";
 import { Boolean, Test } from "ts-toolbelt";
-import { ApplyMigration, ApplyMigrations } from "./apply_migrations";
+import { ApplyMigration, ApplyMigrations } from "./apply_migrations_api";
 import { DatabaseMetadataRestriction, DatabaseMetadata, RelationMeta } from "./metadata";
 import { PrimitiveInt, PrimitiveString } from "../../definition/primitives";
 

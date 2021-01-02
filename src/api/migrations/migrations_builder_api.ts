@@ -5,7 +5,7 @@ import {
     Migration, RelationType, RemoveFieldMigration,
     RemoveTypeMigration, RenameFieldMigration
 } from "../../definition/migrations";
-import { ApplyMigrations, ApplyMigrationUnchecked } from "./apply_migrations";
+import { ApplyMigrations, ApplyMigrationUnchecked } from "./apply_migrations_api";
 import { DataPrimitive } from "../../definition/primitives";
 import { DatabaseMetadata } from "./metadata";
 
