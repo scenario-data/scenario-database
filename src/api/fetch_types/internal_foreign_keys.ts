@@ -30,19 +30,6 @@ export type InternalFKPrimitiveDefinitions = {
     },
 };
 
-declare function checkInternalFKPrimitiveDefs(defs: {
-    [P in InternalFKPrimitive["primitive_type"]]: {
-        primitive: Extract<InternalFKPrimitive, { primitive_type: P }>,
-        shape: {
-            id: Extract<InternalFKPrimitive, { primitive_type: P }>,
-            ts: PrimitiveLocalDateTime,
-            [prop: string]: DataPrimitive | InternalFKRef<InternalFKPrimitive>,
-        },
-    }
-}): void;
-declare const internalFKPrimitiveDefs: InternalFKPrimitiveDefinitions;
-checkInternalFKPrimitiveDefs(internalFKPrimitiveDefs);
-
 export type InternalFKPrimitiveShape<T extends InternalFKPrimitive> = Extract<InternalFKPrimitiveDefinitions[keyof InternalFKPrimitiveDefinitions], { primitive: T }>["shape"];
 export type InternalFKPrimitiveResultShape<T extends InternalFKPrimitive> = {
     [P in keyof InternalFKPrimitiveShape<T>]:

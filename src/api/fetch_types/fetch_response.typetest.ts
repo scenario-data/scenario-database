@@ -31,3 +31,5 @@ is<FetchResponse<TestRelation, {}>[]>(response({ many: {} }).many); // Relation 
 is<BranchId>(response({ one: { internalFK: {} } }).one!.internalFK.branchedFrom);
 is<InternalFKPrimitiveFetchResponse<PrimitiveBranch, {}>>(response({ one: { internalFK: { branchedFrom: {} } } }).one!.internalFK.branchedFrom);
 
+// Check traversing inverse relation
+is<number | null>(response({ one: { inverse: {} } }).tgtProp);

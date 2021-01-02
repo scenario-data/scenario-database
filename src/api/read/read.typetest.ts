@@ -19,6 +19,13 @@ request({
     type: TestTarget,
     branch: masterBranchId,
     ids: [asId("1")],
+    relations: { one: { inverse: {} } },
+});
+
+request({
+    type: TestTarget,
+    branch: masterBranchId,
+    ids: [asId("1")],
     relations: { one: { target: { many: {} } } },
 });
 
@@ -48,9 +55,16 @@ read({
         branch: masterBranchId,
         relations: { target: { one: { target: { many: {} } } } },
     },
+    inverserelation: {
+        type: TestRelation,
+        branch: masterBranchId,
+        ids: [asId("1")],
+        relations: { inverse: {} },
+    },
 }).then(res => {
     is<FetchResponse<TestTarget, {}>>(res.norelations[0]!);
     is<FetchResponse<TestRelation, { target: { one: { target: { many: {} } } } }>>(res.somerelations[0]!);
+    is<FetchResponse<TestRelation, { inverse: {} }>>(res.inverserelation[0]!);
 });
 
 read({
