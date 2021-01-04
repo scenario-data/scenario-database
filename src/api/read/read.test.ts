@@ -4,7 +4,7 @@ import { Any } from "ts-toolbelt";
 import { QueryRunner } from "../query_runner/query_runner_api";
 import { executeMigrations, prepare } from "../migrations/execute_migrations";
 import { EntityDef, EntityRestriction, isId } from "../../definition/entity";
-import { createRead, transformDbBranch, transformDbId, transformDbUser, transformDbVersion } from "./read";
+import { createRead } from "./read";
 import { isVersionId, masterBranchId } from "../../temporal";
 import { LocalDate, LocalDateTime } from "js-joda";
 import { isUserId, rootUserId } from "../../user";
@@ -16,7 +16,7 @@ import { FetchNode } from "../fetch_types/fetch_node";
 import { NoExtraProperties } from "../../misc/no_extra_properties";
 import { FetchResponse } from "../fetch_types/fetch_response";
 import { path, Path } from "../../misc/tspath";
-import { isLocalDateTime, nevah, nullableGuard, objectKeys } from "../../misc/typeguards";
+import { atLeastOne, isLocalDateTime, nevah, nullableGuard, objectKeys } from "../../misc/typeguards";
 import {
     getPrimitiveGuard,
     isDataPrimitive,
@@ -36,6 +36,10 @@ import {
 import { isDataReference } from "../../definition/references";
 import { isPlainObject } from "lodash";
 import { generateMigrations } from "../migrations/generate_migrations";
+import { hydrateBranchId, hydrateId, hydrateUserId, hydrateVersionId } from "../db_values/from_db_values";
+import { getUniverseElementName } from "../universe";
+import { createBranching } from "../branch/branch";
+import { serializeId } from "../db_values/to_db_values";
 
 const builtIns: { [P in keyof FetchResponse<{}, {}>]: ((val: unknown) => val is FetchResponse<{}, {}>[P]) } = {
     id: isId,
@@ -139,8 +143,8 @@ describe("Database read", () => {
         const universe = { Target: class Target {} };
         await executeMigrations(queryRunner, generateMigrations(universe));
 
-        const res = await queryRunner.query(pgFormat(`INSERT INTO "public".%I ("branch", "by") VALUES (%L, %L) RETURNING "id"`, ["Target", namedBranchId(masterBranchId), namedUserId(rootUserId)]));
-        const itemId = res.rows[0]!.id;
+        const res = await queryRunner.query(pgFormat(`INSERT INTO "public".%I ("branch", "by") VALUES (%L, %L) RETURNING "id"`, [getUniverseElementName(universe, universe.Target), namedBranchId(masterBranchId), namedUserId(rootUserId)]));
+        const itemId = atLeastOne(res.rows)[0].id;
 
         const read = createRead(queryRunner, universe);
         const { basic } = await read({ basic: {
@@ -155,7 +159,7 @@ describe("Database read", () => {
 
         checkFetchResponse(universe.Target, {}, item);
 
-        expect(item.id).to.eql(transformDbId(itemId));
+        expect(item.id).to.eql(hydrateId(itemId));
         expect(item.ts.isAfter(LocalDateTime.now().minusMinutes(1))).to.be(true);
         expect(item.by).to.eql(rootUserId);
     });
@@ -177,19 +181,19 @@ describe("Database read", () => {
         } };
         await executeMigrations(queryRunner, generateMigrations(universe));
 
-        const res = await queryRunner.query(pgFormat(`INSERT INTO "public".%I ("branch", "by") VALUES (%L, %L) RETURNING "id"`, ["Target", namedBranchId(masterBranchId), namedUserId(rootUserId)]));
-        const itemId = res.rows[0]!.id;
+        const res = await queryRunner.query(pgFormat(`INSERT INTO "public".%I ("branch", "by") VALUES (%L, %L) RETURNING "id"`, [getUniverseElementName(universe, universe.Target), namedBranchId(masterBranchId), namedUserId(rootUserId)]));
+        const itemId = atLeastOne(res.rows)[0].id;
 
         const read = createRead(queryRunner, universe);
-        const { basic } = await read({ basic: {
+        const { nullPrimitives } = await read({ nullPrimitives: {
             type: universe.Target,
             ids: [itemId],
             branch: masterBranchId,
             references: {},
         } });
 
-        expect(basic).to.have.length(1);
-        const item = basic[0]!;
+        expect(nullPrimitives).to.have.length(1);
+        const item = nullPrimitives[0]!;
 
         checkFetchResponse(universe.Target, {}, item);
     });
@@ -234,28 +238,28 @@ describe("Database read", () => {
                  %L,     %L,      %L,    %L,       %L,      %L,      %L,    %L,    %L,     %L,          %L,              %L
             ) RETURNING "id"
         `, [
-            "Target", namedBranchId(masterBranchId), namedUserId(rootUserId),
+            getUniverseElementName(universe, universe.Target), namedBranchId(masterBranchId), namedUserId(rootUserId),
             vrsn, brnch, usr, buffer.toString("utf8"), float, money, int, str, bool, localDate.toString(), localDateTime.toString(), enm,
         ]));
-        const itemId = res.rows[0]!.id;
+        const itemId = atLeastOne(res.rows)[0].id;
 
 
         const read = createRead(queryRunner, universe);
-        const { basic } = await read({ basic: {
+        const { primitiveValues } = await read({ primitiveValues: {
             type: universe.Target,
             ids: [itemId],
             branch: masterBranchId,
             references: {},
         } });
 
-        expect(basic).to.have.length(1);
-        const item = basic[0]!;
+        expect(primitiveValues).to.have.length(1);
+        const item = primitiveValues[0]!;
 
         checkFetchResponse(universe.Target, {}, item);
 
-        expect(item.vrsn).to.eql(transformDbVersion(vrsn));
-        expect(item.brnch).to.eql(transformDbBranch(brnch));
-        expect(item.usr).to.eql(transformDbUser(usr));
+        expect(item.vrsn).to.eql(hydrateVersionId(vrsn));
+        expect(item.brnch).to.eql(hydrateBranchId(brnch));
+        expect(item.usr).to.eql(hydrateUserId(usr));
         expect(item.buffer ? buffer.equals(item.buffer) : false).to.eql(true);
         expect(item.float).to.eql(float);
         expect(item.money).to.eql(money);
@@ -265,5 +269,45 @@ describe("Database read", () => {
         expect(item.localDate ? localDate.isEqual(item.localDate) : false).to.eql(true);
         expect(item.localDateTime ? localDateTime.isEqual(item.localDateTime) : false).to.eql(true);
         expect(item.enm).to.eql(enm);
+    });
+
+    it("Should read different values for same id from different branches", async () => {
+        const universe = { Target: class Target { public prop = primitiveString(); } };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const version1Value = "version 1 value";
+        const version2Value = "version 2 value";
+
+        const res = await queryRunner.query(pgFormat(
+            `INSERT INTO "public".%I ("branch", "by", "prop") VALUES (%L, %L, %L) RETURNING "id"`,
+            [getUniverseElementName(universe, universe.Target), namedBranchId(masterBranchId), namedUserId(rootUserId), version1Value]
+        ));
+        const itemId = atLeastOne(res.rows)[0].id;
+
+        const otherBranch = await createBranching(queryRunner)(masterBranchId, rootUserId);
+        await queryRunner.query(pgFormat( // Same id, another branch
+            `INSERT INTO "public".%I ("id", "branch", "by", "prop") VALUES (%L, %L, %L, %L) RETURNING "id"`,
+            [getUniverseElementName(universe, universe.Target), serializeId(itemId), otherBranch, namedUserId(rootUserId), version2Value]
+        ));
+
+
+        const read = createRead(queryRunner, universe);
+        const { v1, v2 } = await read({
+            v1: {
+                type: universe.Target,
+                ids: [itemId],
+                branch: masterBranchId,
+                references: {},
+            },
+            v2: {
+                type: universe.Target,
+                ids: [itemId],
+                branch: otherBranch,
+                references: {},
+            },
+        });
+
+        expect(atLeastOne(v1)[0].prop).to.eql(version1Value);
+        expect(atLeastOne(v2)[0].prop).to.eql(version2Value);
     });
 });

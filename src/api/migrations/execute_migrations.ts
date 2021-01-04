@@ -70,7 +70,7 @@ export async function prepare(queryRunner: QueryRunner) {
     // Add branches table
     await queryRunner.query(`CREATE TABLE "public"."branch" (
         "id" SERIAL NOT NULL,
-        "start_version" INT NOT NULL,
+        "start_version" INT NOT NULL DEFAULT currval('edit_version_seq'::regclass),
         "parent" INT,
         "ts" TIMESTAMP without time zone NOT NULL DEFAULT now(),
         "by" INT NOT NULL,

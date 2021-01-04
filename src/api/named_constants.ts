@@ -11,26 +11,30 @@ const namedBranches = {
     [unwrap(masterBranchId)]: 1,
     [unwrap(metaBranchId)]: 2,
 } as const;
-type BranchDBId = (typeof namedBranches)[keyof typeof namedBranches];
+type NamedBranchId = keyof typeof namedBranches;
+type BranchDBId = (typeof namedBranches)[NamedBranchId];
 const namedBranchIds = invert(namedBranches);
 
-export const namedBranchId = <T extends keyof typeof namedBranches>(val: BranchId<T>) => namedBranches[unwrap(val)];
-export const isNamedBranchId = (val: number): val is BranchDBId => String(val) in namedBranchIds;
-export const namedBranchById = (val: BranchDBId) => {
-    if (!isNamedBranchId(val)) { throw new Error(`Not a named branch id: ${ val }`); }
-    return asBranchId(namedBranchIds[String(val)]!);
+export const namedBranchId = <T extends NamedBranchId>(val: BranchId<T>): BranchDBId => namedBranches[unwrap(val)];
+export const isNamedBranchId = (val: BranchId): val is BranchId<NamedBranchId> => unwrap(val) in namedBranches;
+export const isNamedBranchSerializedId = (val: number): val is BranchDBId => String(val) in namedBranchIds;
+export const namedBranchById = (val: BranchDBId): BranchId<NamedBranchId> => {
+    if (!isNamedBranchSerializedId(val)) { throw new Error(`Not a named branch id: ${ val }`); }
+    return asBranchId(namedBranchIds[String(val)]!) as BranchId<NamedBranchId>;
 };
 
 const namedUsers = {
     [unwrap(rootUserId)]: 1,
     [unwrap(anonymousUserId)]: 2,
 } as const;
-type UserDBId = (typeof namedUsers)[keyof typeof namedUsers];
+type NamedUserId = keyof typeof namedUsers;
+type UserDBId = (typeof namedUsers)[NamedUserId];
 const namedUserIds = invert(namedUsers);
 
-export const namedUserId = <T extends keyof typeof namedUsers>(val: UserId<T>) => namedUsers[unwrap(val)];
-export const isNamedUserId = (val: number): val is UserDBId => String(val) in namedUserIds;
-export const namedUserById = (val: UserDBId) => {
-    if (!isNamedUserId(val)) { throw new Error(`Not a named user id: ${ val }`); }
-    return asUserId(namedUserIds[String(val)]!);
+export const namedUserId = <T extends NamedUserId>(val: UserId<T>): UserDBId => namedUsers[unwrap(val)];
+export const isNamedUserId = (val: UserId): val is UserId<NamedUserId> => unwrap(val) in namedUsers;
+export const isNamedUserSerializedId = (val: number): val is UserDBId => String(val) in namedUserIds;
+export const namedUserById = (val: UserDBId): UserId<NamedUserId> => {
+    if (!isNamedUserSerializedId(val)) { throw new Error(`Not a named user id: ${ val }`); }
+    return asUserId(namedUserIds[String(val)]!) as UserId<NamedUserId>;
 };
