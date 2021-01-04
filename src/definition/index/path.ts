@@ -3,7 +3,7 @@ import { EntityRestriction } from "../entity";
 import { path, Path } from "../../misc/tspath";
 import { InternalFKPrimitive, InternalFKPrimitiveShape, InternalFKRef } from "../../api/fetch_types/internal_foreign_keys";
 import { KeysHaving } from "../../misc/misc";
-import { HasOne } from "../relations";
+import { HasOne, HasOneInverse } from "../references";
 import { IndexTarget } from "./target";
 
 export type IndexPath<Entity extends EntityRestriction<Entity>, Target extends IndexTarget> = Path<Entity, Target> & { __$$fieldPath: true };
@@ -17,10 +17,11 @@ type InternalFKPathBuilder<From extends EntityRestriction<From>, To extends Inte
 };
 
 type IndexPathBuilder<From extends EntityRestriction<From>, To extends EntityRestriction<To>> = {
-    [P in KeysHaving<DataPrimitive | HasOne<any>, To>]:
+    [P in KeysHaving<DataPrimitive | HasOne<any> | HasOneInverse<any, any>, To>]:
           To[P] extends InternalFKPrimitive ? IndexPath<From, To[P]> & InternalFKPathBuilder<From, To[P]>
         : To[P] extends DataPrimitive ? IndexPath<From, To[P]>
         : To[P] extends HasOne<infer One> ? (One extends EntityRestriction<One> ? IndexPathBuilder<From, One> : never)
+        : To[P] extends HasOneInverse<infer Inverse, any> ? (Inverse extends EntityRestriction<Inverse> ? IndexPathBuilder<From, Inverse> : never)
         : never
 } & {
     id: IndexPath<From, "id">;

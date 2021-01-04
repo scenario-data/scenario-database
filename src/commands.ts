@@ -7,6 +7,7 @@ import * as gulp from "gulp";
 import * as yargs from "yargs";
 import { red, green } from "chalk";
 
+import dbTasks from "./tasks/db";
 import buildTasks from "./tasks/build";
 import testTasks, { defaultTestSpec } from "./tasks/test";
 
@@ -42,6 +43,7 @@ yargs
     .command(
         "test", "Run all tests", {},
         () => {
+            dbTasks();
             buildTasks();
             testTasks({});
 
@@ -68,6 +70,11 @@ yargs
                     type: "boolean",
                     default: false,
                 })
+                .option("noDB", {
+                    description: "Avoid spinning up the database container",
+                    type: "boolean",
+                    default: false,
+                })
                 .option("bail", {
                     description: "Stop after first test failure",
                     type: "boolean",
@@ -80,12 +87,14 @@ yargs
                 });
         },
         argv => {
+            dbTasks();
             buildTasks();
             testTasks({
                 testSpec: argv.spec,
                 noCoverage: argv.noCoverage,
                 bail: argv.bail,
                 debugMocha: argv.debug,
+                noDB: argv.noDB,
             });
 
             start("mocha_tests");

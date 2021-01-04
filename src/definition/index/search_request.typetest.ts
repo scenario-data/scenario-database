@@ -10,12 +10,12 @@ const testIndex = index("some_index", TestTarget, {
         target: indexPath<TestTarget>().tgtProp,
         conditions: ["eq", "neq", "lt", "gt"],
     },
-    relProp: {
-        target: indexPath<TestTarget>().one.relProp,
+    refProp: {
+        target: indexPath<TestTarget>().one.refProp,
         conditions: ["eq", "neq", "lt"],
     },
     incompleteTypeMatch: {
-        target: indexPath<TestTarget>().one.relProp,
+        target: indexPath<TestTarget>().one.refProp,
         conditions: ["eq", "lt"],
     },
 });
@@ -25,7 +25,7 @@ declare const request: IndexRequestBuilder<TestTarget, typeof testIndexTargets>;
 
 request.data("tgtProp", { type: "eq", val: 1 });
 request.data("tgtProp", { type: "eq", val: null });
-request.data("relProp", { type: "eq", val: 1 });
+request.data("refProp", { type: "eq", val: 1 });
 
 request.data("incompleteTypeMatch", { type: "eq", val: 1 });
 request.data("incompleteTypeMatch", { type: "neq", val: 1 }); // `neq` not explicitly specified, but inferred by condition definition
@@ -44,7 +44,7 @@ request.data("nonexistent", { type: "eq", val: 1 });
 request.and(
     request.data("tgtProp", { type: "neq", val: null }),
     request.or(
-        request.data("relProp", { type: "eq", val: 1 }),
+        request.data("refProp", { type: "eq", val: 1 }),
         request.data("incompleteTypeMatch", { type: "gt", val: 1 })
     )
 );

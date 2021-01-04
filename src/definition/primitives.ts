@@ -19,6 +19,7 @@ export type DataPrimitive =
     | PrimitiveEnum<string[]>;
 
 export type DataPrimitiveType = DataPrimitive["primitive_type"];
+export type DataPrimitiveOfType<T extends DataPrimitiveType> = Extract<DataPrimitive, { primitive_type: T }>;
 
 export type PrimitiveTypeValue<T extends DataPrimitiveType> =
       T extends PrimitiveVersion["primitive_type"] ? VersionId

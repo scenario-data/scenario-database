@@ -28,4 +28,4 @@ export function atLeastOne<T>(arr: readonly T[]): AtLeastOne<T> {
     return [arr[0]!, ...arr.slice(1)];
 }
 
-export const nevah = (x: never): never => { throw new Error(`Unexpected: ${ JSON.stringify(x) }`); };
+export function nevah(x: never): asserts x is never { throw new Error(`Unexpected: ${ JSON.stringify(x) }`); }

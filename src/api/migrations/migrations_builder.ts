@@ -1,7 +1,7 @@
 import { DatabaseMetadataRestriction } from "./metadata";
 import { MigrationsApi } from "./migrations_builder_api";
 import {
-    AddPrimitiveFieldsMigration, AddRelationMigration,
+    AddPrimitiveFieldsMigration, AddReferenceMigration,
     AddTypeMigration,
     Migration, RemoveFieldMigration,
     RemoveTypeMigration, RenameFieldMigration
@@ -21,7 +21,7 @@ export function migrate<DB extends DatabaseMetadataRestriction<DB>>(_prevDefinit
         removeType: createApiMethod<"removeType", RemoveTypeMigration<any>>(type => ({ action: "removeType", type })),
 
         addPrimitives: createApiMethod<"addPrimitives", AddPrimitiveFieldsMigration<any, any>>((type, fields) => ({ action: "addPrimitiveFields", type, fields })),
-        addRelation: createApiMethod<"addRelation", AddRelationMigration<any, any, any, any>>((type, field, target, relType) => ({ action: "addRelation", type, field, target, relType })),
+        addReference: createApiMethod<"addReference", AddReferenceMigration<any, any, any>>((type, field, target) => ({ action: "addReference", type, field, target })),
 
         renameField: createApiMethod<"renameField", RenameFieldMigration<any, any, any>>((type, from, to) => ({ action: "renameField", type, from, to })),
         removeField: createApiMethod<"removeField", RemoveFieldMigration<any, any>>((type, field) => ({ action: "removeField", type, field })),

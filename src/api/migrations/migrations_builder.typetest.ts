@@ -19,8 +19,8 @@ const migrations = builder
     .addPrimitives("t2", { prap: primitiveString() })
     .renameField("t2", "prap", "prop")
 
-    .addRelation("t2", "one", "t1", "one-to-one")
-    .addRelation("t2", "many", "t1", "many-to-one")
+    .addReference("t2", "one", "t1")
+    .addReference("t2", "many", "t1")
 
     .removeField("t1", "removeme")
     .removeType("t0")
@@ -34,6 +34,10 @@ noop(migrations.length === -1);
 is<AddTypeMigration<"t1">>(migrations[0]);
 is<AddTypeMigration<"t0">>(migrations[0]);
 
+builder.addType(
+    // @ts-expect-error — overrides internal type
+    "branch"
+);
 
 builder.removeType(
     // @ts-expect-error — can't remove unknown type
@@ -44,6 +48,11 @@ builder.removeType(
 builder.addType("one").removeType(
     // @ts-expect-error — can't remove unknown type
     "another"
+);
+
+builder.addType("t1").addType("t2").addReference("t1", "ref", "t2").removeType(
+    // @ts-expect-error — can't remove a type targeted by existing references
+    "t2"
 );
 
 
@@ -62,24 +71,76 @@ builder.addType("t")
     });
 
 
-builder.addRelation(
+builder.addType("t").addPrimitives("t", {
+    // @ts-expect-error — internal property
+    id: primitiveString(),
+});
+builder.addType("t").addPrimitives("t", {
+    // @ts-expect-error — internal property
+    at: primitiveString(),
+});
+builder.addType("t").addPrimitives("t", {
+    // @ts-expect-error — internal property
+    branch: primitiveString(),
+});
+builder.addType("t").addPrimitives("t", {
+    // @ts-expect-error — internal property
+    by: primitiveString(),
+});
+builder.addType("t").addPrimitives("t", {
+    // @ts-expect-error — internal property
+    ts: primitiveString(),
+});
+
+
+builder.addReference(
     // @ts-expect-error — unknown type
     "t",
-    "rel", "t", "one-to-one"
+    "ref", "t"
 );
 
-builder.addType("t1").addRelation("t1", "rel",
+builder.addType("t1").addType("t2").addReference(
+    "t1",
+    // @ts-expect-error — overwrites internal property
+    "id",
+    "t2"
+);
+builder.addType("t1").addType("t2").addReference(
+    "t1",
+    // @ts-expect-error — overwrites internal property
+    "at",
+    "t2"
+);
+builder.addType("t1").addType("t2").addReference(
+    "t1",
+    // @ts-expect-error — overwrites internal property
+    "branch",
+    "t2"
+);
+builder.addType("t1").addType("t2").addReference(
+    "t1",
+    // @ts-expect-error — overwrites internal property
+    "by",
+    "t2"
+);
+builder.addType("t1").addType("t2").addReference(
+    "t1",
+    // @ts-expect-error — overwrites internal property
+    "ts",
+    "t2"
+);
+
+builder.addType("t1").addReference("t1", "ref",
     // @ts-expect-error — unknown type
-    "unknown",
-    "one-to-one"
+    "unknown"
 );
 
 builder.addType("t").addPrimitives("t", { f: primitiveString() })
-    .addRelation(
+    .addReference(
         "t",
         // @ts-expect-error — property already exists
         "f",
-        "t", "one-to-one"
+        "t"
     );
 
 builder.renameField(

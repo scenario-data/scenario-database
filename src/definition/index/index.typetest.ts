@@ -15,7 +15,7 @@ index("some_index", TestTarget, {
         target: indexPath<TestTarget>().id,
         conditions: ["eq"],
     },
-    relationId: {
+    referenceId: {
         target: indexPath<TestTarget>().one.id,
         conditions: ["eq"],
     },
@@ -23,12 +23,16 @@ index("some_index", TestTarget, {
         target: indexPath<TestTarget>().tgtProp,
         conditions: ["eq", "neq", "lt", "gt"],
     },
-    relProp: {
-        target: indexPath<TestTarget>().one.relProp,
+    refProp: {
+        target: indexPath<TestTarget>().one.refProp,
         conditions: ["eq", "lt"],
     },
     internalFK: {
         target: indexPath<TestTarget>().one.internalFK,
+        conditions: ["eq"],
+    },
+    inverseTraversal: {
+        target: indexPath<TestTarget>().one.inverse.tgtProp,
         conditions: ["eq"],
     },
     internalFKDeep: {
@@ -48,14 +52,14 @@ index("some_index", Str, {
 index("some_index", TestTarget, {
     toMany: {
         // @ts-expect-error — to-many traversal not allowed for indices, otherwise may lead to combinatorial explosions
-        target: indexPath<TestTarget>().many.relProp,
+        target: indexPath<TestTarget>().many.refProp,
         conditions: ["eq", "lt"],
     },
 });
 
 index("some_index", TestTarget, {
-    relation: {
-        // @ts-expect-error — relation itself is not an allowed
+    reference: {
+        // @ts-expect-error — reference itself is not an allowed target
         target: indexPath<TestTarget>().one,
         conditions: ["eq", "lt"],
     },

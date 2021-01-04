@@ -3,38 +3,38 @@ import { DatabaseRead, ReadRequest } from "./read_api";
 import { asVersionId, masterBranchId } from "../../temporal";
 import { FetchResponse } from "../fetch_types/fetch_response";
 import { FetchNode } from "../fetch_types/fetch_node";
-import { TestRelation, TestTarget, TestUniverse } from "../_test_universe";
+import { TestReference, TestTarget, TestUniverse } from "../_test_universe";
 
 declare function is<Expected = never>(actual: Expected): void;
-declare function request<Relations extends FetchNode<TestTarget>>(val: ReadRequest<TestTarget, Relations>): void;
+declare function request<References extends FetchNode<TestTarget>>(val: ReadRequest<TestTarget, References>): void;
 
 request({
     type: TestTarget,
     branch: masterBranchId,
     ids: [asId("1")],
-    relations: {},
+    references: {},
 });
 
 request({
     type: TestTarget,
     branch: masterBranchId,
     ids: [asId("1")],
-    relations: { one: { inverse: {} } },
+    references: { one: { inverse: {} } },
 });
 
 request({
     type: TestTarget,
     branch: masterBranchId,
     ids: [asId("1")],
-    relations: { one: { target: { many: {} } } },
+    references: { one: { target: { many: {} } } },
 });
 
 request({
     type: TestTarget,
     at: asVersionId("0"),
     ids: [asId("1")],
-    relations: { one: { target: { many: {
-        // @ts-expect-error — unexpected relation request
+    references: { one: { target: { many: {
+        // @ts-expect-error — unexpected reference request
         unexpected: {},
     } } } },
 });
@@ -43,28 +43,28 @@ request({
 
 declare const read: DatabaseRead<TestUniverse>;
 read({
-    norelations: {
+    noreferences: {
         type: TestTarget,
         ids: [asId("1"), asId("2")],
         branch: masterBranchId,
-        relations: {},
+        references: {},
     },
-    somerelations: {
-        type: TestRelation,
+    somereferences: {
+        type: TestReference,
         ids: [asId("1"), asId("2")],
         branch: masterBranchId,
-        relations: { target: { one: { target: { many: {} } } } },
+        references: { target: { one: { target: { many: {} } } } },
     },
-    inverserelation: {
-        type: TestRelation,
+    inversereference: {
+        type: TestReference,
         branch: masterBranchId,
         ids: [asId("1")],
-        relations: { inverse: {} },
+        references: { inverse: {} },
     },
 }).then(res => {
-    is<FetchResponse<TestTarget, {}>>(res.norelations[0]!);
-    is<FetchResponse<TestRelation, { target: { one: { target: { many: {} } } } }>>(res.somerelations[0]!);
-    is<FetchResponse<TestRelation, { inverse: {} }>>(res.inverserelation[0]!);
+    is<FetchResponse<TestTarget, {}>>(res.noreferences[0]!);
+    is<FetchResponse<TestReference, { target: { one: { target: { many: {} } } } }>>(res.somereferences[0]!);
+    is<FetchResponse<TestReference, { inverse: {} }>>(res.inversereference[0]!);
 });
 
 read({
@@ -72,7 +72,7 @@ read({
         type: TestTarget,
         ids: [asId("1"), asId("2")],
         branch: masterBranchId,
-        relations: { one: { target: { many: { target: {
+        references: { one: { target: { many: { target: {
             // @ts-expect-error
             unexpected: {},
         } } } } },

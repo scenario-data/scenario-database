@@ -14,14 +14,14 @@ export interface DatabaseSearch<Universe extends UniverseRestriction<Universe>> 
     <
         Entity extends UniverseElement<Universe>,
         Targets extends IndexTargets<Entity>,
-        Relations extends FetchNode<Entity>
+        References extends FetchNode<Entity>
     >(
         index: Index<Entity, Targets>,
         request: SearchRequest<Entity, Targets> | null, // Null allows unrestricted pagination through entities of given type
         branch: BranchId,
-        returning: Any.Cast<Relations, NoExtraProperties<FetchNode<Entity>, Relations>>,
+        returning: Any.Cast<References, NoExtraProperties<FetchNode<Entity>, References>>,
         order?: SearchOrder<Entity, Targets> | AtLeastOne<SearchOrder<Entity, Targets>>,
         limit?: number,
         after?: Id<Entity>
-    ): Promise<FetchResponse<Entity, Relations>[]>;
+    ): Promise<FetchResponse<Entity, References>[]>;
 }

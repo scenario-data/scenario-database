@@ -1,7 +1,7 @@
 import { Defined, KeysHaving } from "../../misc/misc";
 import { InternalFKPrimitive, InternalFKPrimitiveResultShape } from "./internal_foreign_keys";
 import { DataPrimitive, PrimitiveValue } from "../../definition/primitives";
-import { HasMany, HasOne } from "../../definition/relations";
+import { HasMany, HasOne } from "../../definition/references";
 import { EntityRestriction, Id } from "../../definition/entity";
 import { VersionId } from "../../temporal";
 import { LocalDateTime } from "js-joda";
@@ -33,7 +33,7 @@ type FetchResponseUnchecked<Entity extends EntityRestriction<Entity>, Request> =
     // Primitives are always fetched, unless they represent a internal foreign key and were requested
     [P in Exclude<KeysHaving<DataPrimitive, Entity>, Extract<keyof Defined<Request>, KeysHaving<InternalFKPrimitive, Entity>>>]: PrimitiveValue<Entity[P]> | null
 } & {
-    // Relation keys will exist if requested
+    // Reference keys will exist if requested
     [P in Extract<keyof Defined<Request>, keyof Entity>]-?: ResolveResponseNode<Entity[P], Defined<Request>[P]>
 };
 export type FetchResponse<Entity extends EntityRestriction<Entity>, Request extends FetchNode<Entity>> = FetchResponseUnchecked<Entity, Request>;

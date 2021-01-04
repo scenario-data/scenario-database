@@ -16,12 +16,12 @@ const testIndex = index("some_index", TestTarget, {
         target: indexPath<TestTarget>().tgtProp,
         conditions: ["eq", "neq", "lt", "gt"],
     },
-    relProp: {
-        target: indexPath<TestTarget>().one.relProp,
+    refProp: {
+        target: indexPath<TestTarget>().one.refProp,
         conditions: ["eq", "neq", "lt"],
     },
     incompleteTypeMatch: {
-        target: indexPath<TestTarget>().one.relProp,
+        target: indexPath<TestTarget>().one.refProp,
         conditions: ["eq", "lt"],
     },
 });
@@ -40,7 +40,7 @@ search(
     targetRequest.and(
         targetRequest.data("tgtProp", { type: "neq", val: null }),
         targetRequest.or(
-            targetRequest.data("relProp", { type: "eq", val: 1 }),
+            targetRequest.data("refProp", { type: "eq", val: 1 }),
             targetRequest.data("incompleteTypeMatch", { type: "gt", val: 1 })
         )
     ),
@@ -49,7 +49,7 @@ search(
 ).then(res => {
     is<FetchResponse<TestTarget, { one: {}, many: { target: {} } }>>(res[0]!);
 
-    // @ts-expect-error — testing against a response with extra expected relations
+    // @ts-expect-error — testing against a response with extra expected references
     is<FetchResponse<TestTarget, { one: {}, many: { target: { one: {} } } }>>(res[0]!);
 });
 
@@ -71,6 +71,6 @@ search(
     targetRequest.data("tgtProp", { type: "neq", val: null }),
     masterBranchId,
 
-    // @ts-expect-error — unknown relation
+    // @ts-expect-error — unknown reference
     { blah: {} }
 ).then(() => void 0);

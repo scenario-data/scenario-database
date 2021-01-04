@@ -17,8 +17,8 @@ describe("Migrations builder", () => {
             .addPrimitives("t2", { prap: primitiveString() })
             .renameField("t2", "prap", "prop")
 
-            .addRelation("t2", "one", "t1", "one-to-one")
-            .addRelation("t2", "many", "t1", "many-to-one")
+            .addReference("t2", "one", "t1")
+            .addReference("t2", "many", "t1")
 
             .removeField("t1", "removeme")
             .removeType("t0")

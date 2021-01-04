@@ -9,7 +9,8 @@ declare function is<Expected = never>(actual: Expected): void;
 
 is<IndexPath<TestTarget, "id">>(indexPath<TestTarget>().id);
 is<IndexPath<TestTarget, PrimitiveInt>>(indexPath<TestTarget>().tgtProp);
-is<IndexPath<TestTarget, PrimitiveInt>>(indexPath<TestTarget>().one.relProp);
+is<IndexPath<TestTarget, PrimitiveInt>>(indexPath<TestTarget>().one.refProp);
+is<IndexPath<TestTarget, PrimitiveInt>>(indexPath<TestTarget>().one.inverse.tgtProp);
 
 is<IndexPath<TestTarget, PrimitiveBranch>>(indexPath<TestTarget>().one.internalFK);
 is<IndexPath<TestTarget, PrimitiveLocalDateTime>>(indexPath<TestTarget>().one.internalFK.ts);
@@ -27,13 +28,13 @@ noop(indexPath<TestTarget>().asdfdsafsdf);
 noop(indexPath<TestTarget>().one.asdfdsafsdf);
 
 // @ts-expect-error — to-many traversal not allowed
-noop(indexPath<TestTarget>().many.relProp);
+noop(indexPath<TestTarget>().many.refProp);
 
 declare function target<P extends IndexPath<any, IndexTarget>>(p: P): IndexPathTarget<P>;
 is<PrimitiveLocalDateTime>(target(indexPath<TestTarget>().one.internalFK.branchedFrom.createdBy.createdBy.ts));
 is<"id">(target(indexPath<TestTarget>().one.target.id));
 
 // @ts-expect-error — Expected type mismatch
-is<PrimitiveBool>(target(indexPath<TestTarget>().one.relProp));
-is<PrimitiveInt>(target(indexPath<TestTarget>().one.relProp));
+is<PrimitiveBool>(target(indexPath<TestTarget>().one.refProp));
+is<PrimitiveInt>(target(indexPath<TestTarget>().one.refProp));
 

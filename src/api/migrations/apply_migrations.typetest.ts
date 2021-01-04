@@ -1,12 +1,12 @@
 import {
-    AddPrimitiveFieldsMigration, AddRelationMigration,
+    AddPrimitiveFieldsMigration, AddReferenceMigration,
     AddTypeMigration,
     Migration, RemoveFieldMigration,
     RemoveTypeMigration, RenameFieldMigration
 } from "../../definition/migrations";
 import { Boolean, Test } from "ts-toolbelt";
 import { ApplyMigration, ApplyMigrations } from "./apply_migrations_api";
-import { DatabaseMetadataRestriction, DatabaseMetadata, RelationMeta } from "./metadata";
+import { DatabaseMetadataRestriction, DatabaseMetadata, ReferenceMeta } from "./metadata";
 import { PrimitiveInt, PrimitiveString } from "../../definition/primitives";
 
 
@@ -25,16 +25,16 @@ Test.checks([
     Test.check<ApplyMigration<{}, AddTypeMigration<"newType">>, { newType: {} }, Test.Pass>(),
     Test.check<ApplyMigration<{ someType: {} }, RemoveTypeMigration<"someType">>, {}, Test.Pass>(),
     Test.check<ApplyMigration<{ t: {} }, AddPrimitiveFieldsMigration<"t", { str: PrimitiveString, int: PrimitiveInt }>>, { t: { str: PrimitiveString, int: PrimitiveInt } }, Test.Pass>(),
-    Test.check<ApplyMigration<{ t1: {}, t2: {} }, AddRelationMigration<"t1", "rel", "t2", "one-to-one">>, { t1: { rel: RelationMeta<"t2", "one-to-one"> }, t2: {} }, Test.Pass>(),
-    Test.check<ApplyMigration<{ t1: {}, t2: {} }, AddRelationMigration<"t2", "rel", "t1", "many-to-one">>, { t1: {}, t2: { rel: RelationMeta<"t1", "many-to-one"> } }, Test.Pass>(),
+    Test.check<ApplyMigration<{ t1: {}, t2: {} }, AddReferenceMigration<"t1", "ref", "t2">>, { t1: { ref: ReferenceMeta<"t2"> }, t2: {} }, Test.Pass>(),
+    Test.check<ApplyMigration<{ t1: {}, t2: {} }, AddReferenceMigration<"t2", "ref", "t1">>, { t1: {}, t2: { ref: ReferenceMeta<"t1"> } }, Test.Pass>(),
     Test.check<ApplyMigration<{ t: { str: PrimitiveString } }, RenameFieldMigration<"t", "str", "prop">>, { t: { prop: PrimitiveString } }, Test.Pass>(),
     Test.check<ApplyMigration<{ t: { str: PrimitiveString } }, RemoveFieldMigration<"t", "str">>, { t: {} }, Test.Pass>(),
 ]);
 
 // Check migrations applied as a set
 Test.checks([
-    Test.check<ApplyMigrations<{}, []>, {}, Test.Pass>(),
-    Test.check<ApplyMigrations<{}, [
+    Test.check<ApplyMigrations<{}, readonly []>, {}, Test.Pass>(),
+    Test.check<ApplyMigrations<{}, readonly [
         AddTypeMigration<"t0">,
         AddPrimitiveFieldsMigration<"t0", { str: PrimitiveString, int: PrimitiveInt }>,
 
@@ -46,13 +46,13 @@ Test.checks([
         AddPrimitiveFieldsMigration<"t2", { prap: PrimitiveString }>,
         RenameFieldMigration<"t2", "prap", "prop">,
 
-        AddRelationMigration<"t2", "one", "t1", "one-to-one">,
-        AddRelationMigration<"t2", "many", "t1", "many-to-one">,
+        AddReferenceMigration<"t2", "one", "t1">,
+        AddReferenceMigration<"t2", "many", "t1">,
 
         RemoveFieldMigration<"t1", "removeme">,
         RemoveTypeMigration<"t0">
     ]>, {
         t1: { str: PrimitiveString, int: PrimitiveInt, anotherStr: PrimitiveString },
-        t2: { prop: PrimitiveString, one: RelationMeta<"t1", "one-to-one">, many: RelationMeta<"t1", "many-to-one"> },
+        t2: { prop: PrimitiveString, one: ReferenceMeta<"t1">, many: ReferenceMeta<"t1"> },
     }, Test.Pass>(),
 ]);

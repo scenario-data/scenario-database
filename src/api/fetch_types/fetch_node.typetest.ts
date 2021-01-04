@@ -3,20 +3,20 @@ import { TestTarget } from "../_test_universe";
 
 declare function test(node: FetchNode<TestTarget>): void;
 
-// Traversing relations
+// Traversing references
 test({
     one: { target: {} },
     many: { target: { many: {} } },
 });
 
 test({
-    // @ts-expect-error — Nonexistent relation
+    // @ts-expect-error — Nonexistent reference
     blah: {},
 });
 
 test({
     one: { target: { many: { target: { one: {
-        // @ts-expect-error — Deep nonexistent relation
+        // @ts-expect-error — Deep nonexistent reference
         blah: {},
     } } } } },
 });
@@ -25,7 +25,7 @@ test({
 test({ one: { internalFK: { branchedFrom: { createdBy: { createdBy: {} } } } } });
 
 test({ one: { internalFK: { branchedFrom: { createdBy: { createdBy: {
-    // @ts-expect-error — Deep nonexistent relation on internal fk
+    // @ts-expect-error — Deep nonexistent reference on internal fk
     blah: {},
 } } } } } });
 

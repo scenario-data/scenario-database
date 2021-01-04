@@ -5,7 +5,7 @@ import { FetchResponse, InternalFKPrimitiveFetchResponse } from "./fetch_respons
 import { BranchId, VersionId } from "../../temporal";
 import { LocalDateTime } from "js-joda";
 import { UserId } from "../../user";
-import { TestRelation, TestTarget } from "../_test_universe";
+import { TestReference, TestTarget } from "../_test_universe";
 
 declare function response<T extends FetchNode<TestTarget>>(val: T): FetchResponse<TestTarget, T>;
 declare function is<Expected = never>(actual: Expected): void;
@@ -20,16 +20,16 @@ is<UserId>(response({}).by);
 // Check own property present
 is<number | null>(response({}).tgtProp);
 
-// @ts-expect-error — relation not requested, so not present
+// @ts-expect-error — reference not requested, so not present
 noop(response({}).one);
-is<FetchResponse<TestRelation, {}> | null>(response({ one: {} }).one); // Relation present
+is<FetchResponse<TestReference, {}> | null>(response({ one: {} }).one); // Reference present
 
-// @ts-expect-error — relation not requested, so not present
+// @ts-expect-error — reference not requested, so not present
 noop(response({}).many);
-is<FetchResponse<TestRelation, {}>[]>(response({ many: {} }).many); // Relation present
+is<FetchResponse<TestReference, {}>[]>(response({ many: {} }).many); // Reference present
 
 is<BranchId>(response({ one: { internalFK: {} } }).one!.internalFK.branchedFrom);
 is<InternalFKPrimitiveFetchResponse<PrimitiveBranch, {}>>(response({ one: { internalFK: { branchedFrom: {} } } }).one!.internalFK.branchedFrom);
 
-// Check traversing inverse relation
+// Check traversing inverse reference
 is<number | null>(response({ one: { inverse: {} } }).tgtProp);

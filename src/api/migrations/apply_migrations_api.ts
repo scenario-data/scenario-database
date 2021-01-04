@@ -1,21 +1,21 @@
-import { Object } from "ts-toolbelt";
-import { DatabaseMetadata, RelationMeta } from "./metadata";
+import { Object, List } from "ts-toolbelt";
+import { DatabaseMetadata, ReferenceMeta } from "./metadata";
 import {
-    AddPrimitiveFieldsMigration, AddRelationMigration,
+    AddPrimitiveFieldsMigration, AddReferenceMigration,
     AddTypeMigration,
     Migration, RemoveFieldMigration,
     RemoveTypeMigration, RenameFieldMigration
 } from "../../definition/migrations";
 
 
-type DropFirst<T extends readonly unknown[]> = T extends [any, ...infer U] ? U : [];
+type DropFirst<T extends readonly unknown[]> = T extends readonly [any, ...infer Tail] ? Tail : [];
 export type ApplyMigrationsUnchecked<Meta, Migrations extends readonly Migration[]> = {
     stop: Meta,
     proceed: ApplyMigrationsUnchecked<
         ApplyMigrationUnchecked<Meta, Migrations[0]>,
         DropFirst<Migrations>
     >,
-}[Migrations extends [] ? "stop" : "proceed"];
+}[List.Length<Migrations> extends 0 ? "stop" : "proceed"];
 
 export type ApplyMigrations<Meta extends DatabaseMetadata, Migrations extends readonly Migration[]> = ApplyMigrationsUnchecked<Meta, Migrations>;
 
@@ -24,7 +24,7 @@ export type ApplyMigrationUnchecked<Meta, M extends Migration> = Meta extends Da
       M extends AddTypeMigration<any> ? ApplyAddType<Meta, M>
     : M extends RemoveTypeMigration<any> ? ApplyRemoveType<Meta, M>
     : M extends AddPrimitiveFieldsMigration<any, any> ? ApplyAddPrimitiveFields<Meta, M>
-    : M extends AddRelationMigration<any, any, any, any> ? ApplyAddRelation<Meta, M>
+    : M extends AddReferenceMigration<any, any, any> ? ApplyAddReference<Meta, M>
     : M extends RenameFieldMigration<any, any, any> ? ApplyRenameField<Meta, M>
     : M extends RemoveFieldMigration<any, any> ? ApplyRemoveField<Meta, M>
     : never
@@ -46,8 +46,8 @@ type ApplyAddPrimitiveFields<Meta extends DatabaseMetadata, M> = M extends AddPr
     Object.P.Merge<Meta, [Type], Fields>
 ) : never;
 
-type ApplyAddRelation<Meta extends DatabaseMetadata, M> = M extends AddRelationMigration<infer Type, infer Field, infer Target, infer RelType> ? (
-    Object.P.Merge<Meta, [Type], { [F in Field]: RelationMeta<Target, RelType> }>
+type ApplyAddReference<Meta extends DatabaseMetadata, M> = M extends AddReferenceMigration<infer Type, infer Field, infer Target> ? (
+    Object.P.Merge<Meta, [Type], { [F in Field]: ReferenceMeta<Target> }>
 ) : never;
 
 type ApplyRenameField<Meta extends DatabaseMetadata, M> = M extends RenameFieldMigration<infer Type, infer From, infer To> ? (
