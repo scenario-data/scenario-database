@@ -19,16 +19,16 @@ export const createRead = <Universe extends UniverseRestriction<Universe>>(query
             WITH RECURSIVE branch_ranges(branch, start_version, end_version, parent) AS (
                     SELECT
                         id as branch,
-                        start_version - 1,
-                            9223372036854775807 as end_version,
-                            parent
+                        start_version,
+                        9223372036854775807 as end_version,
+                        parent
                     FROM "public"."branch" current
                     WHERE current.id = %L /* TARGET_BRANCH */
                 UNION
                     SELECT
                         b.id  as branch,
-                        b.start_version - 1,                /* start exclusive */
-                        p.start_version as end_version,     /* end inclusive */
+                        b.start_version,
+                        p.start_version as end_version,
                         b.parent
                     FROM "public"."branch" b
                     RIGHT JOIN branch_ranges p ON (p.parent = b.id)
@@ -39,7 +39,7 @@ export const createRead = <Universe extends UniverseRestriction<Universe>>(query
                 SELECT id, max(at) as version
                 FROM "public".%I "entity"
                 INNER JOIN branch_ranges br ON (br.branch = entity.branch)
-                WHERE entity.at < br.end_version
+                WHERE entity.at <= br.end_version
                   AND entity.id IN (%L)
                 GROUP BY "entity"."id"
             ) tip

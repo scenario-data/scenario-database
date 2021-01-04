@@ -271,6 +271,30 @@ describe("Database read", () => {
         expect(item.enm).to.eql(enm);
     });
 
+    it("Should read an original value of an entity from a new branch, if entity is unchanged", async () => {
+        const universe = { Target: class Target { public prop = primitiveString(); } };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const val = "some value";
+        const res = await queryRunner.query(pgFormat(
+            `INSERT INTO "public".%I ("branch", "by", "prop") VALUES (%L, %L, %L) RETURNING "id"`,
+            [getUniverseElementName(universe, universe.Target), namedBranchId(masterBranchId), namedUserId(rootUserId), val]
+        ));
+        const itemId = atLeastOne(res.rows)[0].id;
+
+        const otherBranch = await createBranching(queryRunner)(masterBranchId, rootUserId);
+
+        const read = createRead(queryRunner, universe);
+        const { fromNewBranch } = await read({ fromNewBranch: {
+            type: universe.Target,
+            ids: [itemId],
+            branch: otherBranch,
+            references: {},
+        } });
+
+        expect(atLeastOne(fromNewBranch)[0].prop).to.eql(val);
+    });
+
     it("Should read different values for same id from different branches", async () => {
         const universe = { Target: class Target { public prop = primitiveString(); } };
         await executeMigrations(queryRunner, generateMigrations(universe));
