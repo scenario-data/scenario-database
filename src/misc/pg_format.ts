@@ -5,7 +5,7 @@ type Placeholder = "%%" | "%I" | "%L" | "%s";
 type _CountPlaceholders<T extends string, Iter extends Iteration.Iteration = Iteration.IterationOf<"0">> = T extends `${ string }${ Placeholder }${ infer Tail }` ? _CountPlaceholders<Tail, Iteration.Next<Iter>> : Iteration.Format<Iter, "s">;
 type CountPlaceholders<T extends string> = Number.Max<_CountPlaceholders<T>>;
 
-type PlaceholderPrimitiveValue = string | number;
+type PlaceholderPrimitiveValue = string | number | boolean;
 type PlaceholderValue = PlaceholderPrimitiveValue | ReadonlyArray<PlaceholderPrimitiveValue> | ReadonlyArray<ReadonlyArray<PlaceholderPrimitiveValue>>;
 type PlaceholderParam<T extends string> = List.Readonly<List.Repeat<PlaceholderValue, CountPlaceholders<T>>>;
 

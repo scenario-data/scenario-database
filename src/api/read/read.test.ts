@@ -3,13 +3,10 @@ import expect = require("expect.js");
 import { Any } from "ts-toolbelt";
 import { QueryRunner } from "../query_runner/query_runner_api";
 import { executeMigrations, prepare } from "../migrations/execute_migrations";
-import { migrate } from "../migrations/migrations_builder";
-import { EntityDefInstanceFromMeta } from "../migrations/metadata";
-import { ApplyMigrations } from "../migrations/apply_migrations_api";
 import { EntityDef, EntityRestriction, isId } from "../../definition/entity";
-import { createRead, transformDbId } from "./read";
+import { createRead, transformDbBranch, transformDbId, transformDbUser, transformDbVersion } from "./read";
 import { isVersionId, masterBranchId } from "../../temporal";
-import { LocalDateTime } from "js-joda";
+import { LocalDate, LocalDateTime } from "js-joda";
 import { isUserId, rootUserId } from "../../user";
 import { pgFormat } from "../../misc/pg_format";
 import { getQueryRunner } from "../query_runner/query_runner";
@@ -20,9 +17,25 @@ import { NoExtraProperties } from "../../misc/no_extra_properties";
 import { FetchResponse } from "../fetch_types/fetch_response";
 import { path, Path } from "../../misc/tspath";
 import { isLocalDateTime, nevah, nullableGuard, objectKeys } from "../../misc/typeguards";
-import { getPrimitiveGuard, isDataPrimitive } from "../../definition/primitives";
+import {
+    getPrimitiveGuard,
+    isDataPrimitive,
+    primitiveBool,
+    primitiveBranch,
+    primitiveBuffer,
+    primitiveEnum,
+    primitiveFloat,
+    primitiveInt,
+    primitiveLocalDate,
+    primitiveLocalDateTime,
+    primitiveMoney,
+    primitiveString,
+    primitiveUser,
+    primitiveVersion
+} from "../../definition/primitives";
 import { isDataReference } from "../../definition/references";
 import { isPlainObject } from "lodash";
+import { generateMigrations } from "../migrations/generate_migrations";
 
 const builtIns: { [P in keyof FetchResponse<{}, {}>]: ((val: unknown) => val is FetchResponse<{}, {}>[P]) } = {
     id: isId,
@@ -57,7 +70,9 @@ function _checkFetchResponse<
         if (!(prop in value)) { throw new Error(`Primitive property '${ prop }' is missing on '${ pathSoFar.toString() }'`); }
 
         const guard = nullableGuard(getPrimitiveGuard(propDef));
-        if (!guard((value as any)[prop])) { throw new Error(`Primitive property '${ prop }' does not match expected type`); }
+        if (!guard((value as any)[prop])) {
+            throw new Error(`Primitive property '${ prop }' does not match expected type`);
+        }
     });
 
     // Check relations
@@ -92,7 +107,7 @@ function _checkFetchResponse<
         }
     });
 
-    const unknownKeys = objectKeys(value).filter(k => !builtinKeys.includes(k as any) || definitionKeys.includes(k as any));
+    const unknownKeys = objectKeys(value).filter(k => !builtinKeys.includes(k as any) && !definitionKeys.includes(k as any));
     if (unknownKeys.length > 0) { throw new Error(`Value contains unknown keys on ${ pathSoFar.toString() }: ${ unknownKeys.join(", ") }`); }
 }
 
@@ -121,19 +136,15 @@ describe("Database read", () => {
     });
 
     it("Should return basic info about the object", async () => {
-        const migrations = migrate({})
-            .addType("Target")
-            .done();
+        const universe = { Target: class Target {} };
+        await executeMigrations(queryRunner, generateMigrations(universe));
 
-        await executeMigrations(queryRunner, migrations);
         const res = await queryRunner.query(pgFormat(`INSERT INTO "public".%I ("branch", "by") VALUES (%L, %L) RETURNING "id"`, ["Target", namedBranchId(masterBranchId), namedUserId(rootUserId)]));
         const itemId = res.rows[0]!.id;
 
-        const Target: EntityDef<EntityDefInstanceFromMeta<ApplyMigrations<{}, typeof migrations>, "Target">> = class {};
-        const read = createRead(queryRunner, { Target });
-
+        const read = createRead(queryRunner, universe);
         const { basic } = await read({ basic: {
-            type: Target,
+            type: universe.Target,
             ids: [itemId],
             branch: masterBranchId,
             references: {},
@@ -142,10 +153,117 @@ describe("Database read", () => {
         expect(basic).to.have.length(1);
         const item = basic[0]!;
 
-        checkFetchResponse(Target, {}, item);
+        checkFetchResponse(universe.Target, {}, item);
 
         expect(item.id).to.eql(transformDbId(itemId));
         expect(item.ts.isAfter(LocalDateTime.now().minusMinutes(1))).to.be(true);
         expect(item.by).to.eql(rootUserId);
+    });
+
+    it("Should return null primitives", async () => {
+        const universe = { Target: class Target {
+            public vrsn = primitiveVersion();
+            public brnch = primitiveBranch();
+            public usr = primitiveUser();
+            public buffer = primitiveBuffer();
+            public float = primitiveFloat();
+            public money = primitiveMoney();
+            public int = primitiveInt();
+            public string = primitiveString();
+            public bool = primitiveBool();
+            public localDate = primitiveLocalDate();
+            public localDateTime = primitiveLocalDateTime();
+            public enum = primitiveEnum("my_enum", ["one", "two", "three"]);
+        } };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const res = await queryRunner.query(pgFormat(`INSERT INTO "public".%I ("branch", "by") VALUES (%L, %L) RETURNING "id"`, ["Target", namedBranchId(masterBranchId), namedUserId(rootUserId)]));
+        const itemId = res.rows[0]!.id;
+
+        const read = createRead(queryRunner, universe);
+        const { basic } = await read({ basic: {
+            type: universe.Target,
+            ids: [itemId],
+            branch: masterBranchId,
+            references: {},
+        } });
+
+        expect(basic).to.have.length(1);
+        const item = basic[0]!;
+
+        checkFetchResponse(universe.Target, {}, item);
+    });
+
+    it("Should return values for primitives", async () => {
+        const universe = { Target: class Target {
+                public vrsn = primitiveVersion();
+                public brnch = primitiveBranch();
+                public usr = primitiveUser();
+                public buffer = primitiveBuffer();
+                public float = primitiveFloat();
+                public money = primitiveMoney();
+                public int = primitiveInt();
+                public str = primitiveString();
+                public bool = primitiveBool();
+                public localDate = primitiveLocalDate();
+                public localDateTime = primitiveLocalDateTime();
+                public enm = primitiveEnum("my_enum", ["one", "two", "three"]);
+            } };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const vrsn = 1;
+        const brnch = namedBranchId(masterBranchId);
+        const usr = namedUserId(rootUserId);
+        const buffer = Buffer.from("whatever");
+        const float = 1.5;
+        const money = 2000;
+        const int = 3;
+        const str = "str";
+        const bool = true;
+        const localDate = LocalDate.now();
+        const localDateTime = LocalDateTime.now();
+        const enm = "two";
+
+
+        const res = await queryRunner.query(pgFormat(`
+            INSERT INTO "public".%I (
+                "branch", "by",
+                "vrsn", "brnch", "usr", "buffer", "float", "money", "int", "str", "bool", "localDate", "localDateTime", "enm"
+            ) VALUES (
+                 %L,       %L,
+                 %L,     %L,      %L,    %L,       %L,      %L,      %L,    %L,    %L,     %L,          %L,              %L
+            ) RETURNING "id"
+        `, [
+            "Target", namedBranchId(masterBranchId), namedUserId(rootUserId),
+            vrsn, brnch, usr, buffer.toString("utf8"), float, money, int, str, bool, localDate.toString(), localDateTime.toString(), enm,
+        ]));
+        const itemId = res.rows[0]!.id;
+
+
+        const read = createRead(queryRunner, universe);
+        const { basic } = await read({ basic: {
+            type: universe.Target,
+            ids: [itemId],
+            branch: masterBranchId,
+            references: {},
+        } });
+
+        expect(basic).to.have.length(1);
+        const item = basic[0]!;
+
+        checkFetchResponse(universe.Target, {}, item);
+
+        expect(item.vrsn).to.eql(transformDbVersion(vrsn));
+        expect(item.brnch).to.eql(transformDbBranch(brnch));
+        expect(item.usr).to.eql(transformDbUser(usr));
+        expect(item.buffer ? buffer.equals(item.buffer) : false).to.eql(true);
+        expect(item.float).to.eql(float);
+        expect(item.money).to.eql(money);
+        expect(item.int).to.eql(int);
+        expect(item.str).to.eql(str);
+        expect(item.bool).to.eql(bool);
+        expect(item.localDate ? localDate.isEqual(item.localDate) : false).to.eql(true);
+        expect(item.localDateTime ? localDateTime.isEqual(item.localDateTime) : false).to.eql(true);
+        expect(item.enm).to.eql(enm);
     });
 });

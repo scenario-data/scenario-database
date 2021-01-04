@@ -1,7 +1,7 @@
 import { invert } from "lodash";
 
-import { BranchId, masterBranchId, metaBranchId } from "../temporal";
-import { anonymousUserId, rootUserId, UserId } from "../user";
+import { asBranchId, BranchId, masterBranchId, metaBranchId } from "../temporal";
+import { anonymousUserId, asUserId, rootUserId, UserId } from "../user";
 import { Notional } from "../misc/misc";
 
 
@@ -15,10 +15,10 @@ type BranchDBId = (typeof namedBranches)[keyof typeof namedBranches];
 const namedBranchIds = invert(namedBranches);
 
 export const namedBranchId = <T extends keyof typeof namedBranches>(val: BranchId<T>) => namedBranches[unwrap(val)];
-export const isNamedBranchId = (val: BranchDBId) => String(val) in namedBranchIds;
+export const isNamedBranchId = (val: number): val is BranchDBId => String(val) in namedBranchIds;
 export const namedBranchById = (val: BranchDBId) => {
     if (!isNamedBranchId(val)) { throw new Error(`Not a named branch id: ${ val }`); }
-    return namedBranchIds[String(val)];
+    return asBranchId(namedBranchIds[String(val)]!);
 };
 
 const namedUsers = {
@@ -29,8 +29,8 @@ type UserDBId = (typeof namedUsers)[keyof typeof namedUsers];
 const namedUserIds = invert(namedUsers);
 
 export const namedUserId = <T extends keyof typeof namedUsers>(val: UserId<T>) => namedUsers[unwrap(val)];
-export const isNamedUserId = (val: UserDBId) => String(val) in namedUserIds;
+export const isNamedUserId = (val: number): val is UserDBId => String(val) in namedUserIds;
 export const namedUserById = (val: UserDBId) => {
     if (!isNamedUserId(val)) { throw new Error(`Not a named user id: ${ val }`); }
-    return namedUserIds[String(val)];
+    return asUserId(namedUserIds[String(val)]!);
 };

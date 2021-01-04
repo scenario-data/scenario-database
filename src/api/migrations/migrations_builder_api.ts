@@ -55,7 +55,7 @@ interface MigrationBuilderStepUnsafe<Migrations extends Migration[]> {
         field: Field
     ): MigrationBuilderStepUnsafe<List.Append<Migrations, RemoveFieldMigration<Type, Field>>>;
 
-    done(): readonly [...Migrations];
+    done(): Migrations;
 }
 
 
@@ -133,7 +133,7 @@ interface MigrationBuilderStepSafe<Iter extends Iteration.Iteration, Migrations 
         field: Field
     ): ApplySafe<Iter, Migrations, CurrentDB, RemoveFieldMigration<Type, Field>>;
 
-    done(): readonly [...Migrations];
+    done(): Migrations;
 }
 
 export type MigrationsApi<DB extends DatabaseMetadata, Migrations extends Migration[]> = MigrationBuilderStepSafe<Iteration.IterationOf<"0">, Migrations, ApplyMigrations<DB, Migrations>>;
