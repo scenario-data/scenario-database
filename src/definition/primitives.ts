@@ -1,6 +1,7 @@
 import { LocalDate, LocalDateTime } from "js-joda";
-import { BranchId, VersionId } from "../temporal";
-import { UserId } from "../user";
+import { BranchId, isBranchId, isVersionId, VersionId } from "../temporal";
+import { isUserId, UserId } from "../user";
+import { isBoolean, isBuffer, isInteger, isLocalDate, isLocalDateTime, isNumber, isString } from "../misc/typeguards";
 
 
 // TODO: support default values — this should also mean non-nullable types in all queries
@@ -78,3 +79,34 @@ export const primitiveLocalDateTime = (): PrimitiveLocalDateTime => ({ primitive
 
 export interface PrimitiveEnum<T extends string[]> { primitive_type: "enum"; values: T; name: string; }
 export const primitiveEnum = <T extends string[]>(name: string, values: T): PrimitiveEnum<T> => ({ primitive_type: "enum", values, name });
+
+
+const guards: { [P in DataPrimitiveType]: (val: unknown) => val is PrimitiveTypeValue<P> } = {
+    bool: isBoolean,
+    branch: isBranchId,
+    version: isVersionId,
+    user: isUserId,
+    buffer: isBuffer,
+    enum: isString,
+    float: isNumber,
+    int: isInteger,
+    local_date: isLocalDate,
+    local_date_time: isLocalDateTime,
+    money: isNumber,
+    string: isString,
+};
+
+const isEnum = (val: DataPrimitive): val is PrimitiveEnum<string[]> => val.primitive_type === "enum";
+export const getPrimitiveGuard = <T extends DataPrimitive>(type: T): ((val: unknown) => val is PrimitiveValue<T>) => {
+    const guard = guards[type.primitive_type];
+    if (!guard) { throw new Error(`No guard found for primitive type '${ type }'`); }
+
+    if (isEnum(type)) {
+        return ((val: unknown) => {
+            if (!guard(val) || !isString(val) /* For type narrowing */) { return false; }
+            return type.values.indexOf(val) !== -1;
+        }) as any;
+    }
+
+    return guard as any;
+};
