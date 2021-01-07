@@ -1,6 +1,6 @@
 import * as gulp from "gulp";
 import { execTask } from "./util/execTask";
-import { isNotNull } from "../misc/typeguards";
+import { isNotNull, objectKeys } from "../misc/typeguards";
 
 interface TestOpts {
     testSpec?: string;
@@ -15,7 +15,13 @@ export default (opts: TestOpts) => {
     const nycExcludes = [
         "**/*.test.ts",
     ];
-    const nyc = `nyc -r=text -r=html -i ts-node/register -e .ts --include 'src/**' ${ nycExcludes.map(excl => `--exclude '${ excl }'`).join(" ")}`;
+    const coverageLimits = {
+        branches: 100,
+        statements: 100,
+        functions: 100,
+        lines: 100,
+    };
+    const nyc = `nyc -r=text -r=html -i ts-node/register -e .ts --check-coverage ${ objectKeys(coverageLimits).map(t => `--${ t }=${ coverageLimits[t] }`).join(" ") } --include 'src/**' ${ nycExcludes.map(excl => `--exclude '${ excl }'`).join(" ") }`;
 
     const mochaIncludes = [
         "ts-node/register",
