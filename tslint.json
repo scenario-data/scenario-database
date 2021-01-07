@@ -72,7 +72,7 @@
       true,
       "dev"
     ],
-    "no-import-side-effect": false, // Used for "reflect-metadata" and styles
+    "no-import-side-effect": true,
     "no-inferrable-types": [
       true,
       "ignore-params"

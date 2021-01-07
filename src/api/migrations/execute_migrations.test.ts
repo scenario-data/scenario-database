@@ -27,7 +27,7 @@ describe("Execute migrations", () => {
     });
 
     afterEach(async () => {
-        await queryRunner.rollbackTransaction();
+        if (!queryRunner.isReleased()) { await queryRunner.rollbackTransaction(); }
     });
 
     const targetType = "MigrationTestTarget";

@@ -2,6 +2,8 @@ import { LocalDate, LocalDateTime } from "js-joda";
 import { BranchId, isBranchId, isVersionId, VersionId } from "../temporal";
 import { isUserId, UserId } from "../user";
 import { isBoolean, isBuffer, isInteger, isLocalDate, isLocalDateTime, isNumber, isString } from "../misc/typeguards";
+import { Comparator, compareByReference, toPositionalComparison } from "../misc/comparisons";
+import { serializeBranchId, serializeUserId } from "../api/db_values/serialize";
 
 
 // TODO: support default values — this should also mean non-nullable types in all queries
@@ -20,7 +22,8 @@ export type DataPrimitive =
     | PrimitiveEnum<string[]>;
 
 export type DataPrimitiveType = DataPrimitive["primitive_type"];
-export type DataPrimitiveOfType<T extends DataPrimitiveType> = Extract<DataPrimitive, { primitive_type: T }>;
+export type DataPrimitiveOfType<T extends DataPrimitiveType> = Extract<DataPrimitive, DataPrimitiveLike<T>>;
+export type DataPrimitiveLike<T extends DataPrimitiveType> = { primitive_type: T };
 
 export type PrimitiveTypeValue<T extends DataPrimitiveType> =
       T extends PrimitiveVersion["primitive_type"] ? VersionId
@@ -38,7 +41,7 @@ export type PrimitiveTypeValue<T extends DataPrimitiveType> =
     : never;
 
 export type PrimitiveValue<T extends DataPrimitive> =
-      T extends PrimitiveEnum<any> ? keyof T["values"]
+      T extends PrimitiveEnum<any> ? T["values"][number]
     : PrimitiveTypeValue<T["primitive_type"]>;
 
 const primitiveTypeKey: keyof DataPrimitive = "primitive_type";
@@ -78,7 +81,7 @@ export interface PrimitiveLocalDateTime { primitive_type: "local_date_time"; }
 export const primitiveLocalDateTime = (): PrimitiveLocalDateTime => ({ primitive_type: "local_date_time" });
 
 export interface PrimitiveEnum<T extends string[]> { primitive_type: "enum"; values: T; name: string; }
-export const primitiveEnum = <T extends string[]>(name: string, values: T): PrimitiveEnum<T> => ({ primitive_type: "enum", values, name });
+export const primitiveEnum = <T extends [] | [string, ...string[]]>(name: string, values: T): PrimitiveEnum<T> => ({ primitive_type: "enum", values, name });
 
 
 const guards: { [P in DataPrimitiveType]: (val: unknown) => val is PrimitiveTypeValue<P> } = {
@@ -109,4 +112,26 @@ export const getPrimitiveGuard = <T extends DataPrimitive>(type: T): ((val: unkn
     }
 
     return guard as any;
+};
+
+
+const comparators: { [P in DataPrimitiveType]: Comparator<PrimitiveTypeValue<P>> } = {
+    bool: compareByReference,
+    version: compareByReference,
+    branch: (b1, b2) => compareByReference(serializeBranchId(b1), serializeBranchId(b2)),
+    user: (u1, u2) => compareByReference(serializeUserId(u1), serializeUserId(u2)),
+    buffer: (b1, b2) => toPositionalComparison(b1.compare(b2)),
+    enum: compareByReference,
+    float: compareByReference,
+    int: compareByReference,
+    local_date: (d1, d2) => toPositionalComparison(d1.compareTo(d2)),
+    local_date_time: (d1, d2) => toPositionalComparison(d1.compareTo(d2)),
+    money: compareByReference,
+    string: compareByReference,
+};
+
+export const getPrimitiveComparator = <T extends DataPrimitiveType>(type: T): Comparator<PrimitiveTypeValue<T>> => {
+    const comparator = comparators[type];
+    if (!comparator) { throw new Error(`No comparator found for primitive type '${ type }'`); }
+    return comparator as any;
 };

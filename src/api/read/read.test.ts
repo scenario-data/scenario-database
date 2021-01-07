@@ -2,22 +2,31 @@ import expect = require("expect.js");
 
 import { Any } from "ts-toolbelt";
 import { QueryRunner } from "../query_runner/query_runner_api";
-import { executeMigrations, prepare } from "../migrations/execute_migrations";
-import { EntityDef, EntityRestriction, isId } from "../../definition/entity";
+import { executeMigrations, prepare, refColumnName } from "../migrations/execute_migrations";
+import { entity, EntityDef, EntityRestriction, Id, isId } from "../../definition/entity";
 import { createRead } from "./read";
-import { isVersionId, masterBranchId } from "../../temporal";
+import { asVersionId, BranchId, isVersionId, masterBranchId } from "../../temporal";
 import { LocalDate, LocalDateTime } from "js-joda";
-import { isUserId, rootUserId } from "../../user";
+import { isUserId, rootUserId, UserId } from "../../user";
 import { pgFormat } from "../../misc/pg_format";
 import { getQueryRunner } from "../query_runner/query_runner";
-import { namedBranchId, namedUserId } from "../named_constants";
 import { devDbConnectionConfig } from "../../config/dev_database_connection";
 import { FetchNode } from "../fetch_types/fetch_node";
 import { NoExtraProperties } from "../../misc/no_extra_properties";
 import { FetchResponse } from "../fetch_types/fetch_response";
 import { path, Path } from "../../misc/tspath";
-import { atLeastOne, isLocalDateTime, nevah, nullableGuard, objectKeys } from "../../misc/typeguards";
 import {
+    atLeastOne,
+    isLocalDateTime,
+    isNotNull,
+    isUndefined,
+    nevah,
+    nullableGuard,
+    objectKeys
+} from "../../misc/typeguards";
+import {
+    DataPrimitive,
+    getPrimitiveComparator,
     getPrimitiveGuard,
     isDataPrimitive,
     primitiveBool,
@@ -31,15 +40,17 @@ import {
     primitiveMoney,
     primitiveString,
     primitiveUser,
+    PrimitiveValue,
     primitiveVersion
 } from "../../definition/primitives";
-import { isDataReference } from "../../definition/references";
+import { hasMany, HasOne, hasOne, hasOneInverse, isDataReference } from "../../definition/references";
 import { isPlainObject } from "lodash";
 import { generateMigrations } from "../migrations/generate_migrations";
-import { hydrateBranchId, hydrateId, hydrateUserId, hydrateVersionId } from "../db_values/from_db_values";
-import { getUniverseElementName } from "../universe";
+import { getUniverseElementName, UniverseElement, UniverseRestriction } from "../universe";
 import { createBranching } from "../branch/branch";
-import { serializeId } from "../db_values/to_db_values";
+import { serializeBranchId, serializePrimitive, serializeUserId } from "../db_values/serialize";
+import { KeysHaving } from "../../misc/misc";
+import { nullableComparator } from "../../misc/comparisons";
 
 const builtIns: { [P in keyof FetchResponse<{}, {}>]: ((val: unknown) => val is FetchResponse<{}, {}>[P]) } = {
     id: isId,
@@ -104,7 +115,6 @@ function _checkFetchResponse<
                 if (!Array.isArray(ref)) { throw new Error(`Expected referenced data to be an array on: ${ refPath.toString() }`); }
                 return ref.forEach((item, idx) => _checkFetchResponse(propDef.target(), (references as any)[prop], item, refPath[idx]!));
 
-            /* istanbul ignore next */
             default:
                 nevah(propDef);
                 throw new Error("Unhandled reference type");
@@ -127,6 +137,80 @@ function checkFetchResponse<
 }
 
 
+interface InsertValue<
+    Universe extends UniverseRestriction<Universe>,
+    Entity extends UniverseElement<Universe>,
+> {
+    branch: BranchId;
+    user: UserId;
+    type: EntityDef<Entity>;
+    value: { id?: Id<Entity> } & {
+        [P in KeysHaving<DataPrimitive | HasOne<any>, Entity>]?:
+        Entity[P] extends DataPrimitive ? PrimitiveValue<Entity[P]>
+            : Entity[P] extends HasOne<infer Ref> ? (Ref extends EntityRestriction<Ref> ? Id<Ref> : never)
+            : never
+    };
+}
+
+async function insert<
+    Universe extends UniverseRestriction<Universe>,
+    Values extends [InsertValue<Universe, UniverseElement<Universe>>, ...InsertValue<Universe, UniverseElement<Universe>>[]]
+>(
+    qr: QueryRunner,
+    universe: Universe,
+    values: Values
+): Promise<{ [P in keyof Values]: Values[P] extends InsertValue<Universe, infer Entity> ? Id<Entity> : never }> {
+    const ids = [];
+    for (const item of values) {
+        const Type = item.type;
+        const tableName = getUniverseElementName(universe, Type);
+
+        const typeDef = new Type();
+        const columnValues = objectKeys(item.value).map(prop => {
+            const propValue = (item.value as any)[prop];
+            if (isUndefined(propValue) === undefined) { return null; }
+            if (prop === "id") { return { column: "id", value: propValue }; }
+
+            const propDef = typeDef[prop];
+            if (isDataPrimitive(propDef)) {
+                return {
+                    column: prop,
+                    value: serializePrimitive(propDef, propValue!),
+                };
+            }
+
+            const pd = propDef as unknown;
+            if (isDataReference(pd)) {
+                if (pd.reference_type !== "has_one") { throw new Error("to-one reference expected"); }
+                return {
+                    column: refColumnName(prop as string, getUniverseElementName(universe, pd.target())),
+                    value: propValue!,
+                };
+            }
+
+            throw new Error(`Unhandled value type: ${ JSON.stringify(propDef) }`);
+        }).filter(isNotNull);
+
+        const columnPlaceholders = columnValues.map(() => "%I");
+        const valuePlaceholders = columnValues.map(() => "%L");
+        const hasValues = columnValues.length > 0;
+        const res = await qr.query(pgFormat(
+            `INSERT INTO "public".%I ("branch", "by"${ hasValues ? ", " : "" }${ columnPlaceholders.join(", ") })
+            VALUES (%L, %L${ hasValues ? ", " : "" }${ valuePlaceholders.join(", ") }) RETURNING "id"`,
+            [
+                tableName, ...columnValues.map(val => val.column as string),
+                serializeBranchId(item.branch), serializeUserId(item.user),
+                ...columnValues.map(val => val.value as any),
+            ]
+        ));
+
+        ids.push(...res.rows.map(r => r.id));
+    }
+
+    return ids as any;
+}
+
+
 describe("Database read", () => {
     let queryRunner: QueryRunner;
     beforeEach(async () => {
@@ -136,19 +220,25 @@ describe("Database read", () => {
     });
 
     afterEach(async () => {
-        await queryRunner.rollbackTransaction();
+        if (!queryRunner.isReleased()) { await queryRunner.rollbackTransaction(); }
     });
 
     it("Should return basic info about the object", async () => {
-        const universe = { Target: class Target {} };
+        // tslint:disable-next-line:no-unnecessary-class
+        @entity() class Target {}
+        const universe = { Target };
         await executeMigrations(queryRunner, generateMigrations(universe));
 
-        const res = await queryRunner.query(pgFormat(`INSERT INTO "public".%I ("branch", "by") VALUES (%L, %L) RETURNING "id"`, [getUniverseElementName(universe, universe.Target), namedBranchId(masterBranchId), namedUserId(rootUserId)]));
-        const itemId = atLeastOne(res.rows)[0].id;
+        const [itemId] = await insert(queryRunner, universe, [{
+            branch: masterBranchId,
+            user: rootUserId,
+            type: Target,
+            value: {},
+        }]);
 
         const read = createRead(queryRunner, universe);
         const { basic } = await read({ basic: {
-            type: universe.Target,
+            type: Target,
             ids: [itemId],
             branch: masterBranchId,
             references: {},
@@ -159,13 +249,14 @@ describe("Database read", () => {
 
         checkFetchResponse(universe.Target, {}, item);
 
-        expect(item.id).to.eql(hydrateId(itemId));
+        expect(item.id).to.eql(itemId);
         expect(item.ts.isAfter(LocalDateTime.now().minusMinutes(1))).to.be(true);
         expect(item.by).to.eql(rootUserId);
     });
 
     it("Should return null primitives", async () => {
-        const universe = { Target: class Target {
+        @entity()
+        class Target {
             public vrsn = primitiveVersion();
             public brnch = primitiveBranch();
             public usr = primitiveUser();
@@ -178,71 +269,70 @@ describe("Database read", () => {
             public localDate = primitiveLocalDate();
             public localDateTime = primitiveLocalDateTime();
             public enum = primitiveEnum("my_enum", ["one", "two", "three"]);
-        } };
+        }
+        const universe = { Target };
         await executeMigrations(queryRunner, generateMigrations(universe));
 
-        const res = await queryRunner.query(pgFormat(`INSERT INTO "public".%I ("branch", "by") VALUES (%L, %L) RETURNING "id"`, [getUniverseElementName(universe, universe.Target), namedBranchId(masterBranchId), namedUserId(rootUserId)]));
-        const itemId = atLeastOne(res.rows)[0].id;
+        const [itemId] = await insert(queryRunner, universe, [{
+            branch: masterBranchId,
+            user: rootUserId,
+            type: Target,
+            value: {},
+        }]);
 
         const read = createRead(queryRunner, universe);
         const { nullPrimitives } = await read({ nullPrimitives: {
-            type: universe.Target,
+            type: Target,
             ids: [itemId],
             branch: masterBranchId,
             references: {},
         } });
 
         expect(nullPrimitives).to.have.length(1);
-        const item = nullPrimitives[0]!;
-
-        checkFetchResponse(universe.Target, {}, item);
+        checkFetchResponse(universe.Target, {}, atLeastOne(nullPrimitives)[0]);
     });
 
     it("Should return values for primitives", async () => {
-        const universe = { Target: class Target {
-                public vrsn = primitiveVersion();
-                public brnch = primitiveBranch();
-                public usr = primitiveUser();
-                public buffer = primitiveBuffer();
-                public float = primitiveFloat();
-                public money = primitiveMoney();
-                public int = primitiveInt();
-                public str = primitiveString();
-                public bool = primitiveBool();
-                public localDate = primitiveLocalDate();
-                public localDateTime = primitiveLocalDateTime();
-                public enm = primitiveEnum("my_enum", ["one", "two", "three"]);
-            } };
+        @entity()
+        class Target {
+            public vrsn = primitiveVersion();
+            public brnch = primitiveBranch();
+            public usr = primitiveUser();
+            public buffer = primitiveBuffer();
+            public float = primitiveFloat();
+            public money = primitiveMoney();
+            public int = primitiveInt();
+            public str = primitiveString();
+            public bool = primitiveBool();
+            public localDate = primitiveLocalDate();
+            public localDateTime = primitiveLocalDateTime();
+            public enm = primitiveEnum("my_enum", ["one", "two", "three"]);
+        }
+
+        const universe = { Target };
         await executeMigrations(queryRunner, generateMigrations(universe));
 
-        const vrsn = 1;
-        const brnch = namedBranchId(masterBranchId);
-        const usr = namedUserId(rootUserId);
-        const buffer = Buffer.from("whatever");
-        const float = 1.5;
-        const money = 2000;
-        const int = 3;
-        const str = "str";
-        const bool = true;
-        const localDate = LocalDate.now();
-        const localDateTime = LocalDateTime.now();
-        const enm = "two";
+        const expectedPrimitiveValues: { [P in keyof Target]: PrimitiveValue<Target[P]> } = {
+            vrsn: asVersionId("1"),
+            brnch: masterBranchId,
+            usr: rootUserId,
+            buffer: Buffer.from("whatever"),
+            float: 1.5,
+            money: 2000,
+            int: 3,
+            str: "str",
+            bool: true,
+            localDate: LocalDate.now(),
+            localDateTime: LocalDateTime.now().withNano(0),
+            enm: "two",
+        };
 
-
-        const res = await queryRunner.query(pgFormat(`
-            INSERT INTO "public".%I (
-                "branch", "by",
-                "vrsn", "brnch", "usr", "buffer", "float", "money", "int", "str", "bool", "localDate", "localDateTime", "enm"
-            ) VALUES (
-                 %L,       %L,
-                 %L,     %L,      %L,    %L,       %L,      %L,      %L,    %L,    %L,     %L,          %L,              %L
-            ) RETURNING "id"
-        `, [
-            getUniverseElementName(universe, universe.Target), namedBranchId(masterBranchId), namedUserId(rootUserId),
-            vrsn, brnch, usr, buffer.toString("utf8"), float, money, int, str, bool, localDate.toString(), localDateTime.toString(), enm,
-        ]));
-        const itemId = atLeastOne(res.rows)[0].id;
-
+        const [itemId] = await insert(queryRunner, universe, [{
+            branch: masterBranchId,
+            user: rootUserId,
+            type: universe.Target,
+            value: expectedPrimitiveValues,
+        }]);
 
         const read = createRead(queryRunner, universe);
         const { primitiveValues } = await read({ primitiveValues: {
@@ -257,30 +347,25 @@ describe("Database read", () => {
 
         checkFetchResponse(universe.Target, {}, item);
 
-        expect(item.vrsn).to.eql(hydrateVersionId(vrsn));
-        expect(item.brnch).to.eql(hydrateBranchId(brnch));
-        expect(item.usr).to.eql(hydrateUserId(usr));
-        expect(item.buffer ? buffer.equals(item.buffer) : false).to.eql(true);
-        expect(item.float).to.eql(float);
-        expect(item.money).to.eql(money);
-        expect(item.int).to.eql(int);
-        expect(item.str).to.eql(str);
-        expect(item.bool).to.eql(bool);
-        expect(item.localDate ? localDate.isEqual(item.localDate) : false).to.eql(true);
-        expect(item.localDateTime ? localDateTime.isEqual(item.localDateTime) : false).to.eql(true);
-        expect(item.enm).to.eql(enm);
+        const targetDef = new Target();
+        objectKeys(expectedPrimitiveValues).forEach(prop => {
+            const comparator = nullableComparator(getPrimitiveComparator(targetDef[prop].primitive_type));
+            expect(comparator(item[prop], expectedPrimitiveValues[prop])).to.eql(0);
+        });
     });
 
     it("Should read an original value of an entity from a new branch, if entity is unchanged", async () => {
-        const universe = { Target: class Target { public prop = primitiveString(); } };
+        @entity() class Target { public prop = primitiveString(); }
+        const universe = { Target };
         await executeMigrations(queryRunner, generateMigrations(universe));
 
         const val = "some value";
-        const res = await queryRunner.query(pgFormat(
-            `INSERT INTO "public".%I ("branch", "by", "prop") VALUES (%L, %L, %L) RETURNING "id"`,
-            [getUniverseElementName(universe, universe.Target), namedBranchId(masterBranchId), namedUserId(rootUserId), val]
-        ));
-        const itemId = atLeastOne(res.rows)[0].id;
+        const [itemId] = await insert(queryRunner, universe, [{
+            branch: masterBranchId,
+            user: rootUserId,
+            type: universe.Target,
+            value: { prop: val },
+        }]);
 
         const otherBranch = await createBranching(queryRunner)(masterBranchId, rootUserId);
 
@@ -296,24 +381,26 @@ describe("Database read", () => {
     });
 
     it("Should read different values for same id from different branches", async () => {
-        const universe = { Target: class Target { public prop = primitiveString(); } };
+        @entity() class Target { public prop = primitiveString(); }
+        const universe = { Target  };
         await executeMigrations(queryRunner, generateMigrations(universe));
 
         const version1Value = "version 1 value";
         const version2Value = "version 2 value";
-
-        const res = await queryRunner.query(pgFormat(
-            `INSERT INTO "public".%I ("branch", "by", "prop") VALUES (%L, %L, %L) RETURNING "id"`,
-            [getUniverseElementName(universe, universe.Target), namedBranchId(masterBranchId), namedUserId(rootUserId), version1Value]
-        ));
-        const itemId = atLeastOne(res.rows)[0].id;
+        const [itemId] = await insert(queryRunner, universe, [{
+            branch: masterBranchId,
+            user: rootUserId,
+            type: universe.Target,
+            value: { prop: version1Value },
+        }]);
 
         const otherBranch = await createBranching(queryRunner)(masterBranchId, rootUserId);
-        await queryRunner.query(pgFormat( // Same id, another branch
-            `INSERT INTO "public".%I ("id", "branch", "by", "prop") VALUES (%L, %L, %L, %L) RETURNING "id"`,
-            [getUniverseElementName(universe, universe.Target), serializeId(itemId), otherBranch, namedUserId(rootUserId), version2Value]
-        ));
-
+        await insert(queryRunner, universe, [{
+            branch: otherBranch,
+            user: rootUserId,
+            type: universe.Target,
+            value: { id: itemId, prop: version2Value },
+        }]);
 
         const read = createRead(queryRunner, universe);
         const { v1, v2 } = await read({
@@ -333,5 +420,296 @@ describe("Database read", () => {
 
         expect(atLeastOne(v1)[0].prop).to.eql(version1Value);
         expect(atLeastOne(v2)[0].prop).to.eql(version2Value);
+    });
+
+    it("Should fetch requested to-one references", async () => {
+        @entity() class Target { public ref = hasOne(() => Reference); }
+        @entity() class Reference { public prop = primitiveString(); }
+        const universe = { Target, Reference };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const propValue = "whatever";
+        const [referenceId] = await insert(queryRunner, universe, [{
+            branch: masterBranchId,
+            user: rootUserId,
+            type: Reference,
+            value: { prop: propValue },
+        }]);
+
+        const [itemId] = await insert(queryRunner, universe, [{
+            branch: masterBranchId,
+            user: rootUserId,
+            type: Target,
+            value: { ref: referenceId },
+        }]);
+
+        const read = createRead(queryRunner, universe);
+        const references = { ref: {} };
+        const { withRef } = await read({ withRef: {
+            type: Target,
+            ids: [itemId],
+            branch: masterBranchId,
+            references,
+        } });
+
+        const item = atLeastOne(withRef)[0];
+        checkFetchResponse(Target, references, item);
+        expect(item.ref?.prop).to.eql(propValue);
+    });
+
+    it("Should fetch requested inverse to-one references", async () => {
+        @entity() class Target { public ref = hasOneInverse(() => Reference, "tgt"); }
+        @entity() class Reference { public prop = primitiveString(); public tgt = hasOne(() => Target); }
+        const universe = { Target, Reference };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const [itemId] = await insert(queryRunner, universe, [{
+            branch: masterBranchId,
+            user: rootUserId,
+            type: Target,
+            value: {},
+        }]);
+
+        const propValue = "whatever";
+        await insert(queryRunner, universe, [{
+            branch: masterBranchId,
+            user: rootUserId,
+            type: Reference,
+            value: {
+                tgt: itemId,
+                prop: propValue,
+            },
+        }]);
+
+        const read = createRead(queryRunner, universe);
+        const references = { ref: {} };
+        const { withInverseRef } = await read({ withInverseRef: {
+            type: Target,
+            ids: [itemId],
+            branch: masterBranchId,
+            references,
+        } });
+
+        const item = atLeastOne(withInverseRef)[0];
+        checkFetchResponse(Target, references, item);
+        expect(item.ref?.prop).to.eql(propValue);
+    });
+
+    it("Should fetch requested to-many references", async () => {
+        @entity() class Target { public ref = hasMany(() => Reference, "tgt"); }
+        @entity() class Reference { public prop = primitiveString(); public tgt = hasOne(() => Target); }
+        const universe = { Target, Reference };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const [itemId] = await insert(queryRunner, universe, [{
+            branch: masterBranchId,
+            user: rootUserId,
+            type: Target,
+            value: {},
+        }]);
+
+        const propValue1 = "whatever1";
+        const propValue2 = "whatever2";
+        await insert(queryRunner, universe, [
+            {
+                branch: masterBranchId,
+                user: rootUserId,
+                type: Reference,
+                value: { tgt: itemId, prop: propValue1 },
+            },
+            {
+                branch: masterBranchId,
+                user: rootUserId,
+                type: Reference,
+                value: { tgt: itemId, prop: propValue2 },
+            },
+        ]);
+
+        const read = createRead(queryRunner, universe);
+        const references = { ref: {} };
+        const { withMany } = await read({ withMany: {
+            type: Target,
+            ids: [itemId],
+            branch: masterBranchId,
+            references,
+        } });
+
+        const item = atLeastOne(withMany)[0];
+        checkFetchResponse(Target, references, item);
+
+        expect(item.ref[0]?.prop).to.eql(propValue1);
+        expect(item.ref[1]?.prop).to.eql(propValue2);
+    });
+
+    it("Should fetch deeply nested references", async () => {
+        @entity()
+        class Post {
+            public text = primitiveString();
+            public published = primitiveLocalDateTime();
+            public tags = hasMany(() => PostTagLink, "post");
+            public comments = hasMany(() => Comment, "post");
+            public author = hasOne(() => Author);
+        }
+
+        @entity()
+        class PostTagLink {
+            public post = hasOne(() => Post);
+            public tag = hasOne(() => Tag);
+        }
+
+        @entity()
+        class Tag {
+            public name = primitiveString();
+            public posts = hasMany(() => PostTagLink, "tag");
+        }
+
+        @entity()
+        class Comment {
+            public text = primitiveString();
+            public post = hasOne(() => Post);
+            public author = hasOne(() => Author);
+            public parent = hasOne(() => Comment);
+            public children = hasMany(() => Comment, "parent");
+        }
+
+        @entity()
+        class Author {
+            public name = primitiveString();
+            public comments = hasMany(() => Comment, "author");
+            public posts = hasMany(() => Post, "author");
+        }
+
+
+        const universe = { Post, PostTagLink, Tag, Comment, Author };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+
+        const authorName = "Author";
+        const [authorId] = await insert(queryRunner, universe, [{
+            branch: masterBranchId,
+            user: rootUserId,
+            type: Author,
+            value: { name: authorName },
+        }]);
+
+        const tag1Name = "Tag1";
+        const tag2Name = "Tag2";
+        const [tag1Id, tag2Id] = await insert(queryRunner, universe, [
+            {
+                branch: masterBranchId,
+                user: rootUserId,
+                type: Tag,
+                value: { name: tag1Name },
+            },
+            {
+                branch: masterBranchId,
+                user: rootUserId,
+                type: Tag,
+                value: { name: tag2Name },
+            },
+        ]);
+
+        const post1Text = "Lorem ipsum dolor sit amet";
+        const post2Text = "Draft";
+        const post1PublishTs = LocalDateTime.now().minusYears(1).withNano(0);
+        const [post1Id, post2Id] = await insert(queryRunner, universe, [
+            {
+                branch: masterBranchId,
+                user: rootUserId,
+                type: Post,
+                value: {
+                    text: post1Text,
+                    published: post1PublishTs,
+                    author: authorId,
+                },
+            },
+            {
+                branch: masterBranchId,
+                user: rootUserId,
+                type: Post,
+                value: {
+                    text: post2Text,
+                    author: authorId,
+                },
+            },
+        ]);
+
+        await insert(queryRunner, universe, [
+            {
+                branch: masterBranchId,
+                user: rootUserId,
+                type: PostTagLink,
+                value: { post: post1Id, tag: tag1Id },
+            },
+            {
+                branch: masterBranchId,
+                user: rootUserId,
+                type: PostTagLink,
+                value: { post: post1Id, tag: tag2Id },
+            },
+            {
+                branch: masterBranchId,
+                user: rootUserId,
+                type: PostTagLink,
+                value: { post: post2Id, tag: tag1Id },
+            },
+        ]);
+
+        const comment1Text = "First!";
+        const [comment1Id] = await insert(queryRunner, universe, [{
+            branch: masterBranchId,
+            user: rootUserId,
+            type: Comment,
+            value: {
+                text: comment1Text,
+                author: authorId,
+                post: post1Id,
+            },
+        }]);
+
+        const comment2Text = "A reply";
+        await insert(queryRunner, universe, [{
+            branch: masterBranchId,
+            user: rootUserId,
+            type: Comment,
+            value: {
+                text: comment2Text,
+                author: authorId,
+                post: post1Id,
+                parent: comment1Id,
+            },
+        }]);
+
+        const read = createRead(queryRunner, universe);
+        const references = {
+            comments: { parent: { children: {} } },
+            posts: {
+                comments: {},
+                tags: { tag: {} },
+            },
+        } as const;
+        const { authorData } = await read({
+            authorData: {
+                branch: masterBranchId,
+                type: Author,
+                ids: [authorId],
+                references,
+            },
+        });
+
+        const author = atLeastOne(authorData)[0];
+        checkFetchResponse(Author, references, author);
+
+        expect(author).to.have.property("name", authorName);
+        expect(author.comments[0]?.text).to.eql(comment1Text);
+        expect(author.comments[1]?.text).to.eql(comment2Text);
+        expect(author.comments[1]?.parent?.children[0]?.text).to.eql(comment2Text);
+
+        expect(author.posts[0]?.text).to.eql(post1Text);
+        expect(author.posts[0]?.published?.isEqual(post1PublishTs)).to.be(true);
+        expect(author.posts[1]?.text).to.eql(post2Text);
+        expect(author.posts[0]?.comments[0]?.text).to.eql(comment1Text);
+
+        expect(author.posts[0]?.tags[0]?.tag?.name).to.eql(tag1Name);
     });
 });

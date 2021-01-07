@@ -1,7 +1,7 @@
 import { Defined, KeysHaving } from "../../misc/misc";
 import { InternalFKPrimitive, InternalFKPrimitiveResultShape } from "./internal_foreign_keys";
 import { DataPrimitive, PrimitiveValue } from "../../definition/primitives";
-import { HasMany, HasOne } from "../../definition/references";
+import { HasMany, HasOne, HasOneInverse } from "../../definition/references";
 import { EntityRestriction, Id } from "../../definition/entity";
 import { VersionId } from "../../temporal";
 import { LocalDateTime } from "js-joda";
@@ -20,6 +20,7 @@ export type InternalFKPrimitiveFetchResponse<T extends InternalFKPrimitive, Node
 
 type ResolveResponseNode<T, Node> =
       T extends HasOne<infer One> ? (One extends EntityRestriction<One> ? (Node extends FetchNode<One> ? FetchResponseUnchecked<One, Node> | null : never) : never)
+    : T extends HasOneInverse<infer InverseOne, any> ? (InverseOne extends EntityRestriction<InverseOne> ? (Node extends FetchNode<InverseOne> ? FetchResponseUnchecked<InverseOne, Node> : never) : never)
     : T extends HasMany<infer Many, any> ? (Many extends EntityRestriction<Many> ? (Node extends FetchNode<Many> ? FetchResponseUnchecked<Many, Node>[] : never) : never)
     : T extends InternalFKPrimitive ? InternalFKPrimitiveFetchResponseUnchecked<T, Node>
     : never;

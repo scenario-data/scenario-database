@@ -32,4 +32,5 @@ is<BranchId>(response({ one: { internalFK: {} } }).one!.internalFK.branchedFrom)
 is<InternalFKPrimitiveFetchResponse<PrimitiveBranch, {}>>(response({ one: { internalFK: { branchedFrom: {} } } }).one!.internalFK.branchedFrom);
 
 // Check traversing inverse reference
-is<number | null>(response({ one: { inverse: {} } }).tgtProp);
+is<FetchResponse<TestTarget, {}> | null>(response({ one: { inverse: {} } }).one!.inverse);
+is<number | null>(response({ one: { inverse: {} } }).one!.inverse!.tgtProp);

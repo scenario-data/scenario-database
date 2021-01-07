@@ -8,8 +8,8 @@ import { BranchingApi } from "./branch_api";
 import { createBranching } from "./branch";
 import { isBranchId, masterBranchId } from "../../temporal";
 import { rootUserId } from "../../user";
-import { hydrateVersionId } from "../db_values/from_db_values";
-import { serializeBranchId } from "../db_values/to_db_values";
+import { hydrateVersionId } from "../db_values/hydrate";
+import { serializeBranchId } from "../db_values/serialize";
 import { atLeastOne } from "../../misc/typeguards";
 
 
@@ -25,7 +25,7 @@ describe("Branching", () => {
     });
 
     afterEach(async () => {
-        await queryRunner.rollbackTransaction();
+        if (!queryRunner.isReleased()) { await queryRunner.rollbackTransaction(); }
     });
 
     it("Should return a branch id when called with desired start_version", async () => {

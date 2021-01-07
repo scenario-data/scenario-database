@@ -2,23 +2,21 @@ import { Any } from "ts-toolbelt";
 import { EntityDef, EntityRestriction, Id } from "../../definition/entity";
 import { FetchNode } from "../fetch_types/fetch_node";
 import { NoExtraProperties } from "../../misc/no_extra_properties";
-import { BranchId, VersionId } from "../../temporal";
+import { BranchId } from "../../temporal";
 import { UniverseElement, UniverseRestriction } from "../universe";
 import { FetchResponse } from "../fetch_types/fetch_response";
 
-interface ReadRequestData<Entity extends EntityRestriction<Entity>, References extends FetchNode<Entity>> {
+export interface ReadRequestData<Entity extends EntityRestriction<Entity>, References extends FetchNode<Entity>> {
     type: EntityDef<Entity>;
     references: Any.Cast<References, NoExtraProperties<FetchNode<Entity>, References>>;
 }
 
-interface ReadRequestIds<Entity extends EntityRestriction<Entity>> {
+export interface ReadRequestIds<Entity extends EntityRestriction<Entity>> {
     ids: Id<Entity>[];
 }
 
-interface ReadRequestTemporal {
+export interface ReadRequestTemporal {
     branch: BranchId;
-    since?: VersionId;
-    at?: VersionId;
 }
 
 export type ReadRequest<Entity extends EntityRestriction<Entity>, References extends FetchNode<Entity>> = ReadRequestData<Entity, References> & ReadRequestIds<Entity> & ReadRequestTemporal;

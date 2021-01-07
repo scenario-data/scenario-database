@@ -13,7 +13,7 @@ interface TestOpts {
 export const defaultTestSpec = "'src/**/*.test.ts'";
 export default (opts: TestOpts) => {
     const nycExcludes = [
-        "**.test.ts",
+        "**/*.test.ts",
     ];
     const nyc = `nyc -r=text -r=html -i ts-node/register -e .ts --include 'src/**' ${ nycExcludes.map(excl => `--exclude '${ excl }'`).join(" ")}`;
 

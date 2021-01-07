@@ -14,4 +14,4 @@ type FormatParams<T extends string> = Any.IsLiteral<T, string> extends Boolean.T
     ? (CountPlaceholders<T> extends "0" ? [`format string must contain placeholders: ${ Placeholder }`, ...any[]] : [val: T, params: PlaceholderParam<T>])
     : [val: T, params: ReadonlyArray<PlaceholderValue>];
 export interface PgFormat { <T extends string>(...params: FormatParams<T>): string; }
-export const pgFormat: PgFormat = ((val: string, params?: ReadonlyArray<PlaceholderValue>) => pgFormatOriginal(val, ...(params || []))) as any;
+export const pgFormat: PgFormat = ((val: string, params?: ReadonlyArray<PlaceholderValue>) => pgFormatOriginal(val, ...(params || /* istanbul ignore next */[]))) as any;

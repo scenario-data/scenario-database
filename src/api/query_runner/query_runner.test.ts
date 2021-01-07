@@ -2,7 +2,7 @@ import expect = require("expect.js");
 import { spy, SinonSpy, stub, SinonStub } from "sinon";
 
 import { Client, Pool } from "pg";
-import { getQueryRunnerForClient } from "./query_runner";
+import { getPool, getPoolClient, getQueryRunnerForClient } from "./query_runner";
 import { devDbConnectionConfig } from "../../config/dev_database_connection";
 import { QueryRunner, TransactionStatus } from "./query_runner_api";
 import { expectToFail } from "../../misc/test_util";
@@ -193,6 +193,36 @@ describe("Query runner", () => {
                 () => qr.rollbackTransaction(),
                 e => expect(e.message).to.match(/Can not roll back/)
             );
+        });
+    });
+});
+
+describe("Query runner", () => {
+    let pool: Pool;
+    before(async () => {
+        pool = getPool(devDbConnectionConfig);
+    });
+
+    after(async () => {
+        await pool.end();
+    });
+
+    describe("getPoolClient", () => {
+        it("Should return a pool client", async () => {
+            const client = await getPoolClient(devDbConnectionConfig);
+            expect(client).to.be.a(Client);
+            expect(client).to.have.property("release");
+            client.release();
+        });
+    });
+
+    describe("getPool", () => {
+        it("Should return a pg Pool", async () => {
+            expect(pool).to.be.a(Pool);
+        });
+
+        it("Should return same pool on multiple calls", async () => {
+            expect(pool).to.eql(getPool(devDbConnectionConfig));
         });
     });
 });

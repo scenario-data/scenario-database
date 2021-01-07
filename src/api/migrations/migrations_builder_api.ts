@@ -64,7 +64,7 @@ type EntityReferences<Etty> = { [P in keyof Etty]: Etty[P] extends ReferenceMeta
 type UniverseReferences<DB, Ignore extends string> = { [P in Exclude<keyof DB, Ignore>]: EntityReferences<DB[P]> }[Exclude<keyof DB, Ignore>];
 
 type InternalType = "branch" | "user";
-type InternalProperty = "id" | "at" | "branch" | "by" | "ts";
+export type InternalProperty = "id" | "at" | "branch" | "by" | "ts";
 
 type FIELD_ALREADY_EXISTS = "*** Field already exists ***";
 type FIELD_OVERRIDES_INTERNAL = "*** Field overrides internal property ***";

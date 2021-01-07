@@ -5,8 +5,8 @@ import { objectKeys } from "../../misc/typeguards";
 
 export type ConnectionConfig = ClientConfig;
 
-const getPool = once((config: ConnectionConfig) => new Pool(config));
-const getPoolClient = (config: ConnectionConfig) => getPool(config).connect();
+export const getPool = once((config: ConnectionConfig) => new Pool(config));
+export const getPoolClient = (config: ConnectionConfig) => getPool(config).connect();
 const getStandaloneClient = async (config: ConnectionConfig) => {
     const c = new Client(config);
     await c.connect();
@@ -83,6 +83,7 @@ export const getQueryRunnerForClient = (logId: string, client: Client | PoolClie
             return transactionStatus;
         },
 
+        isReleased() { return released; },
         async release(error) {
             if (error) {
                 // tslint:disable-next-line:no-console
@@ -104,7 +105,7 @@ export const getQueryRunnerForClient = (logId: string, client: Client | PoolClie
 };
 
 export const getQueryRunner = async (logId: string, config: ConnectionConfig, standalone?: boolean): Promise<QueryRunner> => {
-    /* istanbul ignore next */
+     // istanbul ignore next
     const client = await (standalone ? getStandaloneClient(config) : getPoolClient(config));
     return getQueryRunnerForClient(logId, client);
 };

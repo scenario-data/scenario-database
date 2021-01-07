@@ -14,11 +14,12 @@ type ContainsPlaceholder = `${ string }${ Placeholder }${ string }`;
 type _CountPlaceholders<T extends string, Iter extends Iteration.Iteration = Iteration.IterationOf<"0">> = T extends `${ infer Head }${ Placeholder }${ string }` ? _CountPlaceholders<Head, Iteration.Next<Iter>> : Iteration.Format<Iter, "s">;
 type CountPlaceholders<T extends string> = Number.Max<_CountPlaceholders<T>>;
 
-export type QueryPlaceholderValue = string | number;
+export type QueryPlaceholderPrimitiveValue = string | number | boolean;
+export type QueryPlaceholderValue = QueryPlaceholderPrimitiveValue | ReadonlyArray<QueryPlaceholderPrimitiveValue>;
 type PlaceholderParam<T extends string> = List.Readonly<List.Repeat<QueryPlaceholderValue, CountPlaceholders<T>>>;
 
 type QueryResult = { rows: { [column: string]: any; }[] };
-type QueryParams<T extends string> = Any.IsLiteral<T, string> extends Boolean.True ? T extends ContainsPlaceholder ? [val: T, params: PlaceholderParam<T>] : [val: T] : ([val: T] | [val: T, params: ReadonlyArray<string>]);
+type QueryParams<T extends string> = Any.IsLiteral<T, string> extends Boolean.True ? T extends ContainsPlaceholder ? [val: T, params: PlaceholderParam<T>] : [val: T] : ([val: T] | [val: T, params: ReadonlyArray<QueryPlaceholderValue>]);
 interface Query { <T extends string>(...val: QueryParams<T>): Promise<QueryResult>; }
 
 export type TransactionIsolationLevel = "SERIALIZABLE" | "REPEATABLE READ" | "READ COMMITTED" | "READ UNCOMMITTED";
@@ -32,4 +33,5 @@ export interface QueryRunner {
     transactionStatus: () => TransactionStatus;
 
     release: (error?: Error | boolean) => Promise<void>;
+    isReleased: () => boolean;
 }

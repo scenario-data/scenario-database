@@ -40,7 +40,7 @@ export async function executeMigrations(queryRunner: QueryRunner, migrations: re
                 await renameField(queryRunner, migration);
                 break;
 
-            /* istanbul ignore next */
+             // istanbul ignore next
             default:
                 nevah(migration);
                 throw new Error("Unhandled migration type");
@@ -143,7 +143,7 @@ function pgPrimitiveType(p: DataPrimitive): string {
         case "string": return "text";
         case "version": return "bigint";
 
-        /* istanbul ignore next */
+         // istanbul ignore next
         default:
             nevah(p);
             throw new Error("Unhandled primitive type");
@@ -176,7 +176,7 @@ async function addPrimitiveFields(queryRunner: QueryRunner, migration: AddPrimit
                     await queryRunner.query(pgFormat(`ALTER TABLE "public".%I ADD CONSTRAINT %I FOREIGN KEY ("by") REFERENCES "public"."user"("id")`, [migration.type, `FK_USER_PRIMITIVE_${ nameHash }`]));
                     break;
 
-                /* istanbul ignore next */
+                 // istanbul ignore next
                 default:
                     nevah(primitiveType);
                     throw new Error("Unhandled internal fk type");
