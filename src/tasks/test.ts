@@ -15,13 +15,19 @@ export default (opts: TestOpts) => {
     const nycExcludes = [
         "**/*.test.ts",
     ];
+
     const coverageLimits = {
         branches: 100,
         statements: 100,
         functions: 100,
         lines: 100,
     };
-    const nyc = `nyc -r=text -r=html -i ts-node/register -e .ts --check-coverage ${ objectKeys(coverageLimits).map(t => `--${ t }=${ coverageLimits[t] }`).join(" ") } --include 'src/**' ${ nycExcludes.map(excl => `--exclude '${ excl }'`).join(" ") }`;
+    const limitsParams = !opts.testSpec || opts.testSpec === defaultTestSpec
+        ? `--check-coverage ${ objectKeys(coverageLimits).map(t => `--${ t }=${ coverageLimits[t] }`).join(" ") }`
+        : ""; // Ignore limits when spec is specified
+
+    const nyc = `nyc -r=text -r=html -i ts-node/register -e .ts ${ limitsParams } --include 'src/**' ${ nycExcludes.map(excl => `--exclude '${ excl }'`).join(" ") }`;
+
 
     const mochaIncludes = [
         "ts-node/register",

@@ -12,8 +12,6 @@ declare const write: DatabaseWrite<TestUniverse>;
 
 request({
     type: TestTarget,
-    branch: masterBranchId,
-    by: rootUserId,
     values: [
         {
             id: asId("0"),
@@ -45,8 +43,6 @@ request({
 
 request({
     type: TestTarget,
-    branch: masterBranchId,
-    by: rootUserId,
     values: [],
     returning: { one: { target: {
         // @ts-expect-error — unknown reference
@@ -54,25 +50,21 @@ request({
     } } },
 });
 
-write({
+write(
+    masterBranchId,
+    rootUserId, {
     simple: {
         type: TestTarget,
-        branch: masterBranchId,
-        by: rootUserId,
         values: [{}],
         returning: {},
     },
     withRequest: {
         type: TestTarget,
-        branch: masterBranchId,
-        by: rootUserId,
         values: [{}],
         returning: { one: { target: { many: {} } } },
     },
     withValues: {
         type: TestTarget,
-        branch: masterBranchId,
-        by: rootUserId,
         values: [
             {
                 id: asId("0"),
@@ -114,11 +106,11 @@ write({
     is<FetchResponse<TestTarget, { one: { target: { many: {} } } }>>(res.withRequest[0]!);
 });
 
-write({
+write(
+    masterBranchId,
+    rootUserId, {
     value_errors: {
         type: TestTarget,
-        branch: masterBranchId,
-        by: rootUserId,
         values: [
             {
                 id: asId("0"),
@@ -149,18 +141,16 @@ write({
     },
 }).then(() => void 0);
 
-write({
+write(
+    masterBranchId,
+    rootUserId, {
     correct: {
         type: TestTarget,
-        branch: masterBranchId,
-        by: rootUserId,
         values: [],
         returning: {},
     },
     reference_errors: {
         type: TestTarget,
-        branch: masterBranchId,
-        by: rootUserId,
         values: [],
         returning: { one: { target: {
             // @ts-expect-error — unknown reference

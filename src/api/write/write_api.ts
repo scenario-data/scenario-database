@@ -12,12 +12,8 @@ export type WriteRequest<
     Entity extends EntityRestriction<Entity>,
     References extends FetchNode<Entity>
 > = {
-    type: EntityDef<Entity>,
-    branch: BranchId,
-
-    by: UserId;
+    type: EntityDef<Entity>;
     values: PartialEntity<Entity>[];
-
     returning: Any.Cast<References, NoExtraProperties<FetchNode<Entity>, References>>;
 };
 
@@ -26,6 +22,8 @@ type RequestEntity<T extends WriteRequest<any, any>> = T extends WriteRequest<in
 type RequestReferences<T extends WriteRequest<any, any>> = T extends WriteRequest<infer _Entity, infer References> ? References : never;
 export interface DatabaseWrite<Universe extends UniverseRestriction<Universe>> {
     <T extends { [prop: string]: WriteRequest<UniverseElement<Universe>, any> }>(
+        branch: BranchId,
+        by: UserId,
         write: { [P in keyof T]: Any.Cast<T[P], WriteRequest<RequestEntity<T[P]>, RequestReferences<T[P]>>> }
     ): Promise<{ [P in keyof T]: FetchResponse<RequestEntity<T[P]>, RequestReferences<T[P]>>[] }>;
 }

@@ -1,7 +1,8 @@
-import { EntityDef, EntityDefType, EntityRestriction, getEntityName } from "../definition/entity";
+import { EntityDef, EntityDefType, EntityRestriction, EntityShape, getEntityName } from "../definition/entity";
 
 
 type _UniverseRestriction<T, P extends keyof T, Show extends "key" | "type"> = T[P] extends EntityDef<any> ? ([EntityDefType<T[P]>] extends [never] ? never : (Show extends "key" ? P : T[P])) : never;
+export type UniverseShape = {[prop: string]: EntityDef<EntityShape> };
 export type UniverseRestriction<T> = { [P in Extract<_UniverseRestriction<T, keyof T, "key">, string>]: _UniverseRestriction<T, P, "type"> };
 export type UniverseElement<Universe extends UniverseRestriction<Universe>> = Universe[keyof Universe] extends EntityDef<infer Def> ? (Def extends EntityRestriction<Def> ? Def : never) : never;
 

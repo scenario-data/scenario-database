@@ -1,6 +1,6 @@
 import { Object } from "ts-toolbelt";
 import { DataPrimitive, isDataPrimitive, PrimitiveValue } from "./primitives";
-import { DataReference, HasMany, HasOne, isDataReference } from "./references";
+import { DataReference, HasMany, HasOne, HasOneInverse, isDataReference } from "./references";
 import { isString, objectKeys } from "../misc/typeguards";
 
 export type EntityDef<T> = new () => T;
@@ -10,6 +10,7 @@ export type EntityRestriction<T> = { [P in Extract<keyof T, string>]: T[P] exten
 export type EntityOf<T extends EntityRestriction<T>> = { id: Id<T> } & { [P in keyof T]:
       T[P] extends DataPrimitive ? PrimitiveValue<T[P]> | null
     : T[P] extends HasOne<infer One> ? (One extends EntityRestriction<One> ? EntityOf<One> | null : never)
+    : T[P] extends HasOneInverse<infer InverseOne, any> ? (InverseOne extends EntityRestriction<InverseOne> ? EntityOf<InverseOne> | null : never )
     : T[P] extends HasMany<infer Many, any> ? (Many extends EntityRestriction<Many> ? Array<EntityOf<Many>> : never)
     : never
 };

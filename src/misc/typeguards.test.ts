@@ -1,5 +1,5 @@
 import expect = require("expect.js");
-import { atLeastOne, isArrayOf, isNotNull, nevah } from "./typeguards";
+import { atLeastOne, isArrayOf, isBoolean, isEither, isNotNull, isString, nevah } from "./typeguards";
 
 describe("Type guards", () => {
     describe("atLeastOne", () => {
@@ -22,6 +22,18 @@ describe("Type guards", () => {
     describe("nevah", () => {
         it("Should throw if called", async () => {
             expect(() => nevah(1 as never)).to.throwError();
+        });
+    });
+
+    describe("isEither", () => {
+        const combined = isEither(isBoolean, isString);
+        it("Should return true if any guard matches", async () => {
+            expect(combined(false)).to.be(true);
+            expect(combined("blah")).to.be(true);
+        });
+
+        it("Should return false if neither guard matches", async () => {
+            expect(combined(1)).to.be(false);
         });
     });
 });

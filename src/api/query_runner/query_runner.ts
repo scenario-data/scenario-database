@@ -21,19 +21,23 @@ const _isolationLevels: {[P in TransactionIsolationLevel]: null} = {
 };
 const isolationLevels = objectKeys(_isolationLevels);
 
+const NEWLINE_RE = /\n/g;
+const WHITESPACE_RE = /\s+/g;
+const formatQuery = (query: string): string => query.replace(NEWLINE_RE, " ").replace(WHITESPACE_RE, " ").trim(); // TODO: better formatting?
+
 export const getQueryRunnerForClient = (logId: string, client: Client | PoolClient): QueryRunner => {
     let released = false;
     let transactionStatus: TransactionStatus = TransactionStatus.NoTransaction;
 
     const runner: QueryRunner = {
-        async query(val: string, parameters?: ReadonlyArray<QueryPlaceholderValue>) {
+        async query(queryString: string, parameters?: ReadonlyArray<QueryPlaceholderValue>) {
             if (released) { throw new Error("Can't run a query on a released query runner"); }
 
             // tslint:disable-next-line:no-console // TODO: better logging
-            console.log(logId, val, JSON.stringify(parameters));
+            console.log(logId, formatQuery(queryString), JSON.stringify(parameters));
 
             try {
-                return await client.query(val, [...(parameters || [])]);
+                return await client.query(queryString, [...(parameters || [])]);
             } catch (e) {
                 await runner.release(e);
                 return Promise.reject(e);

@@ -51,6 +51,8 @@ import { createBranching } from "../branch/branch";
 import { serializeBranchId, serializePrimitive, serializeUserId } from "../db_values/serialize";
 import { KeysHaving } from "../../misc/misc";
 import { nullableComparator } from "../../misc/comparisons";
+import { hydrateId } from "../db_values/hydrate";
+import { expectToFail } from "../../misc/test_util";
 
 const builtIns: { [P in keyof FetchResponse<{}, {}>]: ((val: unknown) => val is FetchResponse<{}, {}>[P]) } = {
     id: isId,
@@ -204,7 +206,7 @@ async function insert<
             ]
         ));
 
-        ids.push(...res.rows.map(r => r.id));
+        ids.push(...res.rows.map(r => hydrateId(r.id)));
     }
 
     return ids as any;
@@ -224,8 +226,7 @@ describe("Database read", () => {
     });
 
     it("Should return basic info about the object", async () => {
-        // tslint:disable-next-line:no-unnecessary-class
-        @entity() class Target {}
+        @entity() class Target {} // tslint:disable-line:no-unnecessary-class
         const universe = { Target };
         await executeMigrations(queryRunner, generateMigrations(universe));
 
@@ -252,6 +253,23 @@ describe("Database read", () => {
         expect(item.id).to.eql(itemId);
         expect(item.ts.isAfter(LocalDateTime.now().minusMinutes(1))).to.be(true);
         expect(item.by).to.eql(rootUserId);
+    });
+
+    it("Should throw if specified ids don't match expected id type", async () => {
+        @entity() class Target {} // tslint:disable-line:no-unnecessary-class
+        const universe = { Target };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const read = createRead(queryRunner, universe);
+        return expectToFail(
+            () => read({ basic: {
+                    type: Target,
+                    ids: [false as any],
+                    branch: masterBranchId,
+                    references: {},
+                } }),
+            e => expect(e.message).to.match(/Request ids must match id type/)
+        );
     });
 
     it("Should return null primitives", async () => {
@@ -495,6 +513,53 @@ describe("Database read", () => {
         expect(item.ref?.prop).to.eql(propValue);
     });
 
+    it("Should not fetch requested inverse to-one references after they were unset", async () => {
+        @entity() class Target { public ref = hasOneInverse(() => Reference, "tgt"); }
+        @entity() class Reference { public prop = primitiveString(); public tgt = hasOne(() => Target); }
+        const universe = { Target, Reference };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const [itemId] = await insert(queryRunner, universe, [{
+            branch: masterBranchId,
+            user: rootUserId,
+            type: Target,
+            value: {},
+        }]);
+
+        const [refId] = await insert(queryRunner, universe, [{
+            branch: masterBranchId,
+            user: rootUserId,
+            type: Reference,
+            value: {
+                tgt: itemId,
+                prop: "whatever",
+            },
+        }]);
+        await insert(queryRunner, universe, [{
+            branch: masterBranchId,
+            user: rootUserId,
+            type: Reference,
+            value: {
+                id: refId,
+                tgt: null,
+                prop: "whatever",
+            },
+        }]);
+
+        const read = createRead(queryRunner, universe);
+        const references = { ref: {} };
+        const { withInverseRef } = await read({ withInverseRef: {
+            type: Target,
+            ids: [itemId],
+            branch: masterBranchId,
+            references,
+        } });
+
+        const item = atLeastOne(withInverseRef)[0];
+        checkFetchResponse(Target, references, item);
+        expect(item).to.have.property("ref", null);
+    });
+
     it("Should fetch requested to-many references", async () => {
         @entity() class Target { public ref = hasMany(() => Reference, "tgt"); }
         @entity() class Reference { public prop = primitiveString(); public tgt = hasOne(() => Target); }
@@ -711,5 +776,38 @@ describe("Database read", () => {
         expect(author.posts[0]?.comments[0]?.text).to.eql(comment1Text);
 
         expect(author.posts[0]?.tags[0]?.tag?.name).to.eql(tag1Name);
+    });
+
+    it("Should return entities in order of requested ids", async () => {
+        @entity() class Target {} // tslint:disable-line:no-unnecessary-class
+        const universe = { Target };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const [id1, id2] = await insert(queryRunner, universe, [
+            {
+                branch: masterBranchId,
+                user: rootUserId,
+                type: Target,
+                value: {},
+            },
+            {
+                branch: masterBranchId,
+                user: rootUserId,
+                type: Target,
+                value: {},
+            },
+        ]);
+
+        const read = createRead(queryRunner, universe);
+        const { order } = await read({ order: {
+            type: Target,
+            ids: [id2, id1],
+            branch: masterBranchId,
+            references: {},
+        } });
+
+        const [item1, item2] = order;
+        expect(item1).to.have.property("id", id2);
+        expect(item2).to.have.property("id", id1);
     });
 });

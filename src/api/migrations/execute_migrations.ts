@@ -187,7 +187,11 @@ async function addPrimitiveFields(queryRunner: QueryRunner, migration: AddPrimit
 
 async function addReference(queryRunner: QueryRunner, migration: AddReferenceMigration<string, string, string>): Promise<void> {
     if (!(await tableExists(queryRunner, migration.target))) { throw new Error(`Unknown target type: ${ migration.target }`); }
-    await queryRunner.query(pgFormat(`ALTER TABLE "public".%I ADD COLUMN %I INT`, [migration.type, refColumnName(migration.field, migration.target)]));
+
+    const columnName = refColumnName(migration.field, migration.target);
+    const indexHash = hash(`${ migration.type }:${ columnName }`, 16);
+    await queryRunner.query(pgFormat(`ALTER TABLE "public".%I ADD COLUMN %I INT`, [migration.type, columnName]));
+    await queryRunner.query(pgFormat(`CREATE INDEX %I ON "public".%I (%I)`, [`REF_IDX_${ indexHash }`, migration.type, columnName]));
 }
 
 async function removeField(queryRunner: QueryRunner, migration: RemoveFieldMigration<string, string>): Promise<void> {

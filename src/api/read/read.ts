@@ -1,13 +1,14 @@
+import { sortBy } from "lodash";
 import { QueryRunner } from "../query_runner/query_runner_api";
 import { DatabaseRead } from "./read_api";
 import { UniverseRestriction } from "../universe";
-import { isUndefined, nevah, objectKeys } from "../../misc/typeguards";
+import { isNot, isUndefined, nevah, objectKeys } from "../../misc/typeguards";
 import { isDataPrimitive, primitiveLocalDateTime } from "../../definition/primitives";
 import { hydratePrimitive, hydrateId, hydrateUserId, hydrateVersionId } from "../db_values/hydrate";
 import { generateSql } from "./generate_sql";
 import { generateRequestStructure } from "./request_structure";
 import { serializeId } from "../db_values/serialize";
-import { EntityDef, EntityShape } from "../../definition/entity";
+import { EntityDef, EntityShape, isId } from "../../definition/entity";
 import { isDataReference } from "../../definition/references";
 
 
@@ -16,13 +17,17 @@ export const createRead = <Universe extends UniverseRestriction<Universe>>(query
 
     for (const requestKey of objectKeys(requests)) {
         const req = requests[requestKey];
+        if (req.ids.some(isNot(isId))) { throw new Error(`Request ids must match id type in section '${ requestKey }'`); }
 
         const { rows } = await queryRunner.query(generateSql(generateRequestStructure(universe, req)), [req.ids.map(serializeId)]);
-        results[requestKey] = rows.map(row => {
-            const r = row.data;
-            hydrateResult(req.type, r);
-            return r;
-        });
+        results[requestKey] = sortBy(
+            rows.map(row => {
+                const r = row.data;
+                hydrateResult(req.type, r);
+                return r;
+            }),
+            item => req.ids.indexOf(item.id)
+        );
     }
 
     return results;
