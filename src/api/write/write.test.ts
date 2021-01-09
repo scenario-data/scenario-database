@@ -191,7 +191,7 @@ describe("Database write", () => {
         const [item1, item2] = update;
         expect(item1).to.have.property("prop", val1);
         expect(item2).to.have.property("prop", val2);
-        // TODO: uncomment: expect(item1?.at).to.eql(item2?.at); // Check all entries are inserted at same version
+        expect(item1?.at).to.eql(item2?.at); // Check all entries are inserted at same version
     });
 
     it("Should create referred entities when they are given without id", async () => {

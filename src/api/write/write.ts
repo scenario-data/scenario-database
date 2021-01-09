@@ -8,7 +8,7 @@ import { createRead } from "../read/read";
 import { getPrimitiveComparator, isDataPrimitive } from "../../definition/primitives";
 import { EntityDef, EntityShape, getEntityName, Id, isId } from "../../definition/entity";
 import { isDataReference } from "../../definition/references";
-import { flatten, groupBy, isPlainObject, map } from "lodash";
+import { flatten, groupBy, isPlainObject, map, uniq } from "lodash";
 import { refColumnName } from "../migrations/execute_migrations";
 import { generateBranchRangesCTE } from "../read/generate_sql";
 import { hydrateId } from "../db_values/hydrate";
@@ -254,9 +254,8 @@ export const createWrite = <Universe extends UniverseRestriction<Universe>>(quer
         });
 
 
-        // const atRes = await queryRunner.query(`SELECT nextval('edit_version_seq'::regclass) AS at`);
-        // const at = atLeastOne(atRes.rows)[0].at;
-        // TODO: when implementing `at` consistency, setReferences on freshly created items must run `update` instead of `insert`
+        const atRes = await queryRunner.query(`SELECT nextval('edit_version_seq'::regclass) AS at`);
+        const at = atLeastOne(atRes.rows)[0].at;
 
 
         // This will hold mapping from temp ids to real database ids, once all inserts are done
@@ -270,12 +269,12 @@ export const createWrite = <Universe extends UniverseRestriction<Universe>>(quer
             const firstChange = atLeastOne(inserts)[0];
             const tableName = getUniverseElementName<UniverseShape>(universe, firstChange.type);
 
-            const insertPrimitives = inserts.filter(isNot(isCreateEntity));
-            const columnPlaceholders = ["%I", "%I", ...insertPrimitives.map(() => "%I")];
-            const valuePlaceholders = ["%L", "%L", ...insertPrimitives.map(() => "%L")];
+            const metaColumns = ["branch", "by", "at"];
+            const metaValues = [serializeBranchId(branch), serializeUserId(user), at];
 
-            const metaColumns = ["branch", "by"];
-            const metaValues = [serializeBranchId(branch), serializeUserId(user)];
+            const insertPrimitives = inserts.filter(isNot(isCreateEntity));
+            const columnPlaceholders = [...metaColumns, ...insertPrimitives].map(() => "%I");
+            const valuePlaceholders = [...metaColumns, ...insertPrimitives].map(() => "%L");
 
             const insertRes = await queryRunner.query(pgFormat(
                 `INSERT INTO "public".%I (${ columnPlaceholders.join(", ") }) VALUES (${ valuePlaceholders.join(", ") }) RETURNING "id"`,
@@ -290,8 +289,31 @@ export const createWrite = <Universe extends UniverseRestriction<Universe>>(quer
         }
 
 
+        // After entities are created, refs destined to reside on new entities must be set using `UPDATE`
+        const refsOnNewEntities = changes.filter(isBoth(isSetReference, isProp("id", isTempId)));
+        for (const refsOnNewEntity of map(groupBy(refsOnNewEntities, item => `${ getEntityName(item.type) }_${ item.id }`))) {
+            const firstUpdate = atLeastOne(refsOnNewEntity)[0];
+            const tableName = getUniverseElementName<UniverseShape>(universe, firstUpdate.type);
+
+            const typeDef = new (firstUpdate.type)();
+            const assignments = uniq(refsOnNewEntities.map(ref => {
+                const propDef = typeDef[ref.prop];
+
+                // istanbul ignore if
+                if (!isDataReference(propDef) || propDef.reference_type !== "has_one") { throw new Error("Implementation error: not a to-one reference"); }
+
+                const column = refColumnName(ref.prop, getUniverseElementName(universe, propDef.target()));
+                return pgFormat(`%I = %L`, [column, ref.targetId !== null ? resolveId(ref.targetId) : null]);
+            })).join(", ");
+
+            await queryRunner.query(pgFormat(`
+                UPDATE "public".%I SET %s WHERE "id" = %L AND "branch" = %L AND "at" = %L
+            `, [tableName, assignments, resolveId(firstUpdate.id), serializeBranchId(branch), at]));
+        }
+
+
         // Primitives and references on existing entities
-        const changesToUpdate = changes.filter(isEither(isSetReference, isBoth(isSetPrimitive, isProp("id", isSavedId))));
+        const changesToUpdate = changes.filter(isEither(isBoth(isSetReference, isProp("id", isSavedId)), isBoth(isSetPrimitive, isProp("id", isSavedId))));
         for (const updatePrimitives of map(groupBy(changesToUpdate, item => `${ getEntityName(item.type) }_${ item.id }`))) {
             const firstUpdate = atLeastOne(updatePrimitives)[0];
             const tableName = getUniverseElementName<UniverseShape>(universe, firstUpdate.type);
@@ -334,8 +356,8 @@ export const createWrite = <Universe extends UniverseRestriction<Universe>>(quer
 
             await queryRunner.query(pgFormat(`
                 WITH %s
-                INSERT INTO "public".%I ("id", "branch", "by", ${ columnNamePlaceholders.join(", ") /* Column names */ })
-                SELECT "id", %L, %L, ${ columnNamesAndOverridesPlaceholders.join(", ") /* columns and overrides */ }
+                INSERT INTO "public".%I ("id", "branch", "at", "by", ${ columnNamePlaceholders.join(", ") /* Column names */ })
+                SELECT "id", %L, %L, %L, ${ columnNamesAndOverridesPlaceholders.join(", ") /* columns and overrides */ }
                 FROM "public".%I entity
                 WHERE entity.id = %L /* Target reference id */
                 AND entity.at = (
@@ -356,7 +378,7 @@ export const createWrite = <Universe extends UniverseRestriction<Universe>>(quer
             `, [
                 generateBranchRangesCTE(branch),
                 tableName, ...columnNames.map(c => c.column),
-                serializeBranchId(branch), serializeUserId(user), ...columnNamesAndOverridesValues,
+                serializeBranchId(branch), at, serializeUserId(user), ...columnNamesAndOverridesValues,
                 tableName,
                 id,
                 tableName,
