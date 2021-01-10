@@ -6,14 +6,17 @@ import { devDbConnectionConfig } from "../../config/dev_database_connection";
 import { executeMigrations, prepare } from "../migrations/execute_migrations";
 import { entity, isId } from "../../definition/entity";
 import { generateMigrations } from "../migrations/generate_migrations";
-import { createWrite, tempId } from "./write";
+import { createWrite, transientId } from "./write";
 import { isVersionId, masterBranchId } from "../../temporal";
 import { rootUserId } from "../../user";
 import { atLeastOne } from "../../misc/typeguards";
-import { LocalDateTime } from "js-joda";
-import { primitiveString } from "../../definition/primitives";
-import { hasOne, hasOneInverse } from "../../definition/references";
+import { LocalDate, LocalDateTime } from "js-joda";
+import { primitiveLocalDate, primitiveString } from "../../definition/primitives";
+import { hasMany, hasOne, hasOneInverse } from "../../definition/references";
 import { expectToFail } from "../../misc/test_util";
+import { createBranching } from "../branch/branch";
+import { createRead } from "../read/read";
+import { createUserApi } from "../user/user";
 
 
 describe("Database write", () => {
@@ -259,7 +262,7 @@ describe("Database write", () => {
         expect(updatedItem).to.have.property("p1", preserved);
     });
 
-    it("Should assign same db id to entities marked with same temp id", async () => {
+    it("Should assign same db id to entities marked with same transient id", async () => {
         @entity() class Target { public ref = hasOne(() => Reference); }
         @entity() class Reference {} // tslint:disable-line:no-unnecessary-class
 
@@ -273,14 +276,14 @@ describe("Database write", () => {
                 ref: {
                     type: Reference,
                     returning: {},
-                    values: [{ id: tempId("ref") }],
+                    values: [{ id: transientId("ref") }],
                 },
                 targets: {
                     type: Target,
                     returning: { ref: {} },
                     values: [
-                        { ref: { id: tempId("ref") } },
-                        { ref: { id: tempId("ref") } },
+                        { ref: { id: transientId("ref") } },
+                        { ref: { id: transientId("ref") } },
                     ],
                 },
             }
@@ -289,6 +292,217 @@ describe("Database write", () => {
         const refId = atLeastOne(ref)[0].id;
         expect(targets[0]?.ref?.id).to.eql(refId);
         expect(targets[1]?.ref?.id).to.eql(refId);
+    });
+
+    it("Should update references", async () => {
+        @entity() class Target { public ref = hasOne(() => Reference); }
+        @entity() class Reference { public prop = primitiveString(); }
+        const universe = { Target, Reference };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const write = createWrite(queryRunner, universe);
+        const { create } = await write(
+            masterBranchId,
+            rootUserId, {
+                create: {
+                    type: Target,
+                    returning: { ref: {} },
+                    values: [{ ref: { prop: "initial" } }],
+                },
+            }
+        );
+
+        const createdItem = atLeastOne(create)[0];
+        const { update } = await write(
+            masterBranchId,
+            rootUserId, {
+                update: {
+                    type: Target,
+                    returning: { ref: {} },
+                    values: [
+                        {
+                            id: createdItem.id,
+                            ref: { prop: "changed" },
+                        },
+                    ],
+                },
+            }
+        );
+
+        const updatedItem = atLeastOne(update)[0];
+        expect(updatedItem.ref?.id).to.not.eql(createdItem.ref?.id);
+        expect(createdItem.ref?.prop).to.eql("initial");
+        expect(updatedItem.ref?.prop).to.eql("changed");
+    });
+
+    it("Should create to-many references", async () => {
+        @entity() class Target { public refs = hasMany(() => Reference, "tgt"); }
+        @entity() class Reference { public tgt = hasOne(() => Target); public prop = primitiveString(); }
+        const universe = { Target, Reference };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const write = createWrite(queryRunner, universe);
+        const { create } = await write(
+            masterBranchId,
+            rootUserId, {
+                create: {
+                    type: Target,
+                    returning: { refs: {} },
+                    values: [{ refs: [
+                        { prop: "ref1" },
+                        { prop: "ref2" },
+                    ] }],
+                },
+            }
+        );
+
+        const item = atLeastOne(create)[0];
+        expect(item.refs).to.have.length(2);
+
+        const values = item.refs.map(r => r.prop);
+        expect(values).to.contain("ref1");
+        expect(values).to.contain("ref2");
+    });
+
+    it("Should unset references if the value is set to null", async () => {
+        @entity() class Target { public ref = hasOne(() => Reference); }
+        @entity() class Reference { public tgt = hasOneInverse(() => Target, "ref"); }
+        const universe = { Target, Reference };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const write = createWrite(queryRunner, universe);
+        const { toOne, inverse } = await write(
+            masterBranchId,
+            rootUserId, {
+                toOne: {
+                    type: Target,
+                    returning: {},
+                    values: [{ ref: {} }],
+                },
+                inverse: {
+                    type: Reference,
+                    returning: {},
+                    values: [{ tgt: {} }],
+                },
+            }
+        );
+
+        const { unsetOne, unsetInverse } = await write(
+            masterBranchId,
+            rootUserId, {
+                unsetOne: {
+                    type: Target,
+                    returning: { ref: {} },
+                    values: [{
+                        id: atLeastOne(toOne)[0].id,
+                        ref: null,
+                    }],
+                },
+                unsetInverse: {
+                    type: Reference,
+                    returning: { tgt: {} },
+                    values: [{
+                        id: atLeastOne(inverse)[0].id,
+                        tgt: null,
+                    }],
+                },
+            }
+        );
+
+        expect(atLeastOne(unsetOne)[0]).to.have.property("ref", null);
+        expect(atLeastOne(unsetInverse)[0]).to.have.property("tgt", null);
+    });
+
+    it("Should allow unsetting an inverse reference and updating the entity at the same time", async () => {
+        @entity() class Target { public ref = hasOne(() => Reference); public prop = primitiveString(); }
+        @entity() class Reference { public tgt = hasOneInverse(() => Target, "ref"); }
+        const universe = { Target, Reference };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const write = createWrite(queryRunner, universe);
+        const { create } = await write(
+            masterBranchId,
+            rootUserId, {
+                create: {
+                    type: Reference,
+                    returning: { tgt: {} },
+                    values: [{ tgt: {} }],
+                },
+            }
+        );
+
+        const propVal = "value";
+        const createdItem = atLeastOne(create)[0];
+        const { update, unset } = await write(
+            masterBranchId,
+            rootUserId, {
+                update: {
+                    type: Target,
+                    returning: { ref: {} },
+                    values: [{
+                        id: createdItem.tgt.id,
+                        prop: propVal,
+                    }],
+                },
+                unset: {
+                    type: Reference,
+                    returning: { tgt: {} },
+                    values: [{
+                        id: createdItem.id,
+                        tgt: null,
+                    }],
+                },
+            }
+        );
+
+        const targetItem = atLeastOne(update)[0];
+        expect(targetItem).to.have.property("prop", propVal);
+        expect(targetItem.ref).to.eql(null);
+
+        expect(atLeastOne(unset)[0]).to.have.property("tgt", null);
+    });
+
+    it("Should not create a relation on a new entity if value is set to null", async () => {
+        @entity()
+        class Target {
+            public r1 = hasOne(() => Reference);
+            public r2 = hasOne(() => Reference);
+        }
+
+        @entity()
+        class Reference {
+            public tgt = hasOneInverse(() => Target, "r1");
+            public tgts = hasMany(() => Target, "r2");
+        }
+        const universe = { Target, Reference };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+
+        const write = createWrite(queryRunner, universe);
+        const { one, inverse, many } = await write(
+            masterBranchId,
+            rootUserId, {
+                one: {
+                    type: Target,
+                    returning: { r1: {} },
+                    values: [{ r1: null }],
+                },
+                inverse: {
+                    type: Reference,
+                    returning: { tgt: {} },
+                    values: [{ tgt: null }],
+                },
+                many: {
+                    type: Reference,
+                    returning: { tgts: {} },
+                    values: [{ tgts: [] }],
+                },
+            }
+        );
+
+        expect(atLeastOne(one)[0]).to.have.property("r1", null);
+        expect(atLeastOne(inverse)[0]).to.have.property("tgt", null);
+        expect(atLeastOne(many)[0].tgts).to.eql([]);
     });
 
     it("Should throw if entity id does not match the expected type", async () => {
@@ -306,7 +520,7 @@ describe("Database write", () => {
                     values: [{ id: Buffer.from("whatever") as any }],
                 } }
             ),
-            e => expect(e.message).to.match(/Entity id may only be an entity id, undefined or a temp id/)
+            e => expect(e.message).to.match(/Entity id may only be an entity id, undefined or a transient id/)
         );
     });
 
@@ -362,9 +576,106 @@ describe("Database write", () => {
         expect(atLeastOne(update)[0]).to.have.property("prop", updatedVal);
     });
 
-    it("Should throw if save request contains conflicting edits", async () => {
+    it("Should throw if save request contains conflicting to-one references", async () => {
         @entity() class Target { public ref = hasOne(() => Reference); }
-        @entity() class Reference { public tgt = hasOneInverse(() => Target, "ref"); }
+        @entity() class Reference {} // tslint:disable-line:no-unnecessary-class
+        const universe = { Target, Reference };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const write = createWrite(queryRunner, universe);
+        return expectToFail(
+            () => write(
+                masterBranchId,
+                rootUserId, {
+                    create: {
+                        type: Target,
+                        returning: {},
+                        values: [
+                            {
+                                id: transientId("target"),
+                                ref: { id: transientId("ref1") },
+                            },
+                            {
+                                id: transientId("target"),
+                                ref: { id: transientId("ref2") }, // Same target, different ref
+                            },
+                        ],
+                    },
+                }
+            ),
+            e => expect(e.message).to.match(/conflict/i)
+        );
+    });
+
+    it("Should throw if save request contains conflicting primitive properties", async () => {
+        @entity() class Target { public prop = primitiveLocalDate(); }
+        const universe = { Target };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const write = createWrite(queryRunner, universe);
+        return expectToFail(
+            () => write(
+                masterBranchId,
+                rootUserId, {
+                    create: {
+                        type: Target,
+                        returning: {},
+                        values: [
+                            {
+                                id: transientId("target"),
+                                prop: LocalDate.now(),
+                            },
+                            {
+                                id: transientId("target"),
+                                prop: LocalDate.now().plusDays(10), // Same target, different prop
+                            },
+                        ],
+                    },
+                }
+            ),
+            e => expect(e.message).to.match(/conflict/i)
+        );
+    });
+
+    it("Should not throw if save request specifies identical primitive property twice", async () => {
+        @entity() class Target { public prop = primitiveLocalDate(); }
+        const universe = { Target };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const write = createWrite(queryRunner, universe);
+        const { create } = await write(
+            masterBranchId,
+            rootUserId, {
+                create: {
+                    type: Target,
+                    returning: {},
+                    values: [
+                        {
+                            id: transientId("target"),
+                            prop: LocalDate.now(),
+                        },
+                        {
+                            id: transientId("target"),
+                            prop: LocalDate.now(), // Same target, same prop value
+                        },
+                    ],
+                },
+            }
+        );
+
+        const propVal = atLeastOne(create)[0].prop;
+        expect(propVal?.isEqual(LocalDate.now())).to.be(true);
+    });
+
+    it("Should throw if save request contains conflicting to-one-inverse references", async () => {
+        @entity() class Target {
+            public r1 = hasOne(() => Reference);
+            public r2 = hasOne(() => Reference);
+        }
+        @entity() class Reference {
+            public tgt = hasOneInverse(() => Target, "r1");
+            public irrelevant = hasOneInverse(() => Target, "r2");
+        }
         const universe = { Target, Reference };
         await executeMigrations(queryRunner, generateMigrations(universe));
 
@@ -378,7 +689,7 @@ describe("Database write", () => {
                         returning: {},
                         values: [{
                             // Create new `Target`
-                            ref: {
+                            r1: {
                                 // ...with a new `Reference`
                                 tgt: {
                                     // ...pointing to another `Target`,
@@ -392,5 +703,161 @@ describe("Database write", () => {
             ),
             e => expect(e.message).to.match(/conflict/i)
         );
+    });
+
+    it("Should set ref when request causes an unset and set on same prop", async () => {
+        @entity() class Target { public ref = hasOne(() => Reference); }
+        @entity() class Reference { public inverse = hasOneInverse(() => Target, "ref"); }
+        const universe = { Target, Reference };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const write = createWrite(queryRunner, universe);
+        const { create } = await write(
+            masterBranchId,
+            rootUserId, {
+                create: {
+                    type: Target,
+                    returning: { ref: {} },
+                    values: [{ ref: {} }],
+                },
+            }
+        );
+
+        const item = atLeastOne(create)[0];
+        const refId = item.ref!.id;
+        const { set, unset } = await write(
+            masterBranchId,
+            rootUserId, {
+                set: {
+                    type: Target,
+                    returning: { ref: {} },
+                    values: [{
+                        id: item.id,
+                        ref: {}, // Sets ref to new item
+                    }],
+                },
+                unset: {
+                    type: Reference,
+                    returning: { inverse: {} },
+                    values: [{
+                        id: refId,
+                        inverse: null, // Unset targeting the same ref
+                    }],
+                },
+            }
+        );
+
+        const updatedRef = atLeastOne(set)[0].ref;
+        expect(updatedRef).to.not.be(null);
+        expect(updatedRef?.id).to.not.be(refId);
+        expect(atLeastOne(unset)[0]).to.have.property("inverse", null);
+    });
+
+    it("Should throw if entity value is not a plain object", async () => {
+        @entity() class Target { public ref = hasOne(() => Reference); }
+        @entity() class Reference {} // tslint:disable-line:no-unnecessary-class
+        const universe = { Target, Reference };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const write = createWrite(queryRunner, universe);
+        return expectToFail(
+            () => write(
+                masterBranchId,
+                rootUserId, {
+                    create: {
+                        type: Target,
+                        returning: {},
+                        values: [{ ref: 1 as any }],
+                    },
+                }
+            ),
+            e => expect(e.message).to.match(/Expected a plain object/)
+        );
+    });
+
+    it("Should throw if to-many set is not an array", async () => {
+        @entity() class Target { public refs = hasMany(() => Reference, "tgt"); }
+        @entity() class Reference { public tgt = hasOne(() => Target); }
+        const universe = { Target, Reference };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const write = createWrite(queryRunner, universe);
+        return expectToFail(
+            () => write(
+                masterBranchId,
+                rootUserId, {
+                    create: {
+                        type: Target,
+                        returning: {},
+                        values: [{ refs: 1 as any }],
+                    },
+                }
+            ),
+            e => expect(e.message).to.match(/Data for to-many relation must be an array/)
+        );
+    });
+
+    it("Should write to the specified branch", async () => {
+        @entity() class Target {} // tslint:disable-line:no-unnecessary-class
+        const universe = { Target };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const read = createRead(queryRunner, universe);
+        const write = createWrite(queryRunner, universe);
+        const createBranch = createBranching(queryRunner);
+
+        const newBranch = await createBranch(masterBranchId, rootUserId);
+        const { create } = await write(
+            newBranch,
+            rootUserId, {
+                create: {
+                    type: Target,
+                    returning: {},
+                    values: [{}],
+                },
+            }
+        );
+
+        const itemId = atLeastOne(create)[0].id;
+        const { branched, master } = await read({
+            master: {
+                type: Target,
+                references: {},
+                branch: masterBranchId,
+                ids: [itemId],
+            },
+            branched: {
+                type: Target,
+                references: {},
+                branch: newBranch,
+                ids: [itemId],
+            },
+        });
+
+        expect(master).to.have.length(0);
+        expect(branched).to.have.length(1);
+    });
+
+    it("Should log which user caused the change", async () => {
+        @entity() class Target {} // tslint:disable-line:no-unnecessary-class
+        const universe = { Target };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const createUser = createUserApi(queryRunner);
+        const write = createWrite(queryRunner, universe);
+
+        const newUser = await createUser(rootUserId);
+        const { create } = await write(
+            masterBranchId,
+            newUser, {
+                create: {
+                    type: Target,
+                    returning: {},
+                    values: [{}],
+                },
+            }
+        );
+
+        expect(atLeastOne(create)[0]).to.have.property("by", newUser);
     });
 });
