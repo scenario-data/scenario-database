@@ -24,4 +24,5 @@ export default () => {
             background: (stdout, _, started) => detectLog(stdout, checkDbRunning, started),
         })
     ));
+    gulp.task("kill_db", execTask("docker-compose -f ./devcontainer/docker-compose.yml down"));
 };

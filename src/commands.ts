@@ -101,6 +101,11 @@ yargs
         }
     )
 
+    .command("kill_db", "Stop and clean-up the dev db container", {}, () => {
+        dbTasks();
+        start("kill_db");
+    })
+
     .demandCommand(1, "Please specify command").strict()
     .version(false)
     .parse();
