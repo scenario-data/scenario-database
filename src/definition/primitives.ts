@@ -3,7 +3,7 @@ import { BranchId, isBranchId, isVersionId, VersionId } from "../temporal";
 import { isUserId, UserId } from "../user";
 import { isBoolean, isBuffer, isInteger, isLocalDate, isLocalDateTime, isNumber, isString } from "../misc/typeguards";
 import { Comparator, compareByReference, toPositionalComparison } from "../misc/comparisons";
-import { serializeBranchId, serializeUserId } from "../api/db_values/serialize";
+import { serializeBranchId, serializeUserId, serializeVersionId } from "../api/db_values/serialize";
 
 
 // TODO: support default values — this should also mean non-nullable types in all queries
@@ -117,7 +117,7 @@ export const getPrimitiveGuard = <T extends DataPrimitive>(type: T): ((val: unkn
 
 const comparators: { [P in DataPrimitiveType]: Comparator<PrimitiveTypeValue<P>> } = {
     bool: compareByReference,
-    version: compareByReference,
+    version: (v1, v2) => compareByReference(serializeVersionId(v1), serializeVersionId(v2)),
     branch: (b1, b2) => compareByReference(serializeBranchId(b1), serializeBranchId(b2)),
     user: (u1, u2) => compareByReference(serializeUserId(u1), serializeUserId(u2)),
     buffer: (b1, b2) => toPositionalComparison(b1.compare(b2)),

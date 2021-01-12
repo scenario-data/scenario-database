@@ -5,7 +5,7 @@ import { QueryRunner } from "../query_runner/query_runner_api";
 import { executeMigrations, prepare, refColumnName } from "../migrations/execute_migrations";
 import { entity, EntityDef, EntityRestriction, Id, isId } from "../../definition/entity";
 import { createRead } from "./read";
-import { asVersionId, BranchId, isVersionId, masterBranchId } from "../../temporal";
+import { BranchId, isVersionId, masterBranchId } from "../../temporal";
 import { LocalDate, LocalDateTime } from "js-joda";
 import { isUserId, rootUserId, UserId } from "../../user";
 import { pgFormat } from "../../misc/pg_format";
@@ -48,10 +48,10 @@ import { isPlainObject } from "lodash";
 import { generateMigrations } from "../migrations/generate_migrations";
 import { getUniverseElementName, UniverseElement, UniverseRestriction } from "../universe";
 import { createBranching } from "../branch/branch";
-import { serializeBranchId, serializePrimitive, serializeUserId } from "../db_values/serialize";
+import { serializeBranchId, serializeId, serializePrimitive, serializeUserId } from "../db_values/serialize";
 import { KeysHaving } from "../../misc/misc";
 import { nullableComparator } from "../../misc/comparisons";
-import { hydrateId } from "../db_values/hydrate";
+import { hydrateId, hydrateVersionId } from "../db_values/hydrate";
 import { expectToFail } from "../../misc/test_util";
 
 const builtIns: { [P in keyof FetchResponse<{}, {}>]: ((val: unknown) => val is FetchResponse<{}, {}>[P]) } = {
@@ -171,7 +171,7 @@ async function insert<
         const columnValues = objectKeys(item.value).map(prop => {
             const propValue = (item.value as any)[prop];
             if (isUndefined(propValue) === undefined) { return null; }
-            if (prop === "id") { return { column: "id", value: propValue }; }
+            if (prop === "id") { return { column: "id", value: serializeId(propValue) }; }
 
             const propDef = typeDef[prop];
             if (isDataPrimitive(propDef)) {
@@ -186,7 +186,7 @@ async function insert<
                 if (pd.reference_type !== "has_one") { throw new Error("to-one reference expected"); }
                 return {
                     column: refColumnName(prop as string, getUniverseElementName(universe, pd.target())),
-                    value: propValue!,
+                    value: propValue !== null ? serializeId(propValue) : null,
                 };
             }
 
@@ -331,7 +331,7 @@ describe("Database read", () => {
         await executeMigrations(queryRunner, generateMigrations(universe));
 
         const expectedPrimitiveValues: { [P in keyof Target]: PrimitiveValue<Target[P]> } = {
-            vrsn: asVersionId("1"),
+            vrsn: hydrateVersionId(1),
             brnch: masterBranchId,
             usr: rootUserId,
             buffer: Buffer.from("whatever"),

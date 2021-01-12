@@ -17,10 +17,11 @@ import {
     primitiveUser,
     primitiveVersion, getPrimitiveGuard, getPrimitiveComparator
 } from "./primitives";
-import { asUserId, rootUserId } from "../user";
-import { asBranchId, asVersionId, masterBranchId } from "../temporal";
+import { rootUserId } from "../user";
+import { masterBranchId } from "../temporal";
 import { LocalDate, LocalDateTime } from "js-joda";
 import { objectKeys } from "../misc/typeguards";
+import { hydrateBranchId, hydrateUserId, hydrateVersionId } from "../api/db_values/hydrate";
 
 describe("Primitives", () => {
     const primitives: { [P in Exclude<DataPrimitiveType, "bool">]: {
@@ -31,21 +32,21 @@ describe("Primitives", () => {
     } } = {
         user: {
             primitive: primitiveUser(),
-            val: asUserId("100"),
+            val: hydrateUserId(100),
             lt: rootUserId,
-            gt: asUserId("999"),
+            gt: hydrateUserId(999),
         },
         branch: {
             primitive: primitiveBranch(),
-            val: asBranchId("100"),
+            val: hydrateBranchId(100),
             lt: masterBranchId,
-            gt: asBranchId("999"),
+            gt: hydrateBranchId(999),
         },
         version: {
             primitive: primitiveVersion(),
-            val: asVersionId("2"),
-            lt: asVersionId("1"),
-            gt: asVersionId("3"),
+            val: hydrateVersionId(2),
+            lt: hydrateVersionId(1),
+            gt: hydrateVersionId(3),
         },
 
 

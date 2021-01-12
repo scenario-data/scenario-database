@@ -5,11 +5,12 @@ import {
     primitiveString,
     primitiveUser
 } from "../../definition/primitives";
-import { asUserId, rootUserId } from "../../user";
-import { asBranchId, masterBranchId } from "../../temporal";
-import { hydratePrimitive } from "./hydrate";
-import { serializePrimitive } from "./serialize";
+import { rootUserId } from "../../user";
+import { masterBranchId } from "../../temporal";
+import { hydrateBranchId, hydrateId, hydratePrimitive, hydrateUserId } from "./hydrate";
+import { serializeId, serializePrimitive } from "./serialize";
 import { namedBranchId, namedUserId } from "../named_constants";
+import { Id } from "../../definition/entity";
 
 
 describe("DB values hydration/serialization", () => {
@@ -29,6 +30,12 @@ describe("DB values hydration/serialization", () => {
         expect(() => serializePrimitive(primitiveString(), false as any)).to.throwError(/Value doesn't match expected type/);
     });
 
+    it("Should throw if serialized id has matching type but no value", async () => {
+        const hydrated = hydrateId(1);
+        const truncated = hydrated.substr(0, hydrated.length - 1);
+        expect(() => serializeId(truncated as Id<any>)).to.throwError(/No serialized id/);
+    });
+
     describe("Named branch handling", () => {
         it("Should serialize named branches to db id", async () => {
             expect(serializePrimitive(primitiveBranch(), masterBranchId)).to.eql(namedBranchId(masterBranchId));
@@ -39,7 +46,7 @@ describe("DB values hydration/serialization", () => {
         });
 
         it("Should deserialize user defined branches to branch id", async () => {
-            expect(hydratePrimitive(primitiveBranch(), 999)).to.eql(asBranchId("999"));
+            expect(hydratePrimitive(primitiveBranch(), 999)).to.eql(hydrateBranchId(999));
         });
     });
 
@@ -53,7 +60,7 @@ describe("DB values hydration/serialization", () => {
         });
 
         it("Should deserialize user defined user to user id", async () => {
-            expect(hydratePrimitive(primitiveUser(), 999)).to.eql(asUserId("999"));
+            expect(hydratePrimitive(primitiveUser(), 999)).to.eql(hydrateUserId(999));
         });
     });
 });

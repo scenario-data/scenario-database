@@ -6,10 +6,12 @@ import { DataPrimitive, getPrimitiveGuard, PrimitiveValue } from "../../definiti
 import { LocalDate, LocalDateTime } from "js-joda";
 import { nevah } from "../../misc/typeguards";
 
-export const hydrateId = (id: number): Id<any> => asId(String(id));
-export const hydrateVersionId = (version: number): VersionId => asVersionId(String(version));
-export const hydrateUserId = (userId: number): UserId => isNamedUserSerializedId(userId) ? namedUserById(userId) : asUserId(String(userId));
-export const hydrateBranchId = (branchId: number): BranchId => isNamedBranchSerializedId(branchId) ? namedBranchById(branchId) : asBranchId(String(branchId));
+const hydrateIdOfType = (id: number, type: string): string => Buffer.from(`${ type }:${ id }`, "utf8").toString("hex");
+
+export const hydrateId = (id: number): Id<any> => asId(hydrateIdOfType(id, "id"));
+export const hydrateVersionId = (version: number): VersionId => asVersionId(hydrateIdOfType(version, "v"));
+export const hydrateUserId = (userId: number): UserId => isNamedUserSerializedId(userId) ? namedUserById(userId) : asUserId(hydrateIdOfType(userId, "u"));
+export const hydrateBranchId = (branchId: number): BranchId => isNamedBranchSerializedId(branchId) ? namedBranchById(branchId) : asBranchId(hydrateIdOfType(branchId, "b"));
 
 const psqlByteaPrefixRe = /^\\x/;
 const _hydratePrimitive = (primitive: DataPrimitive, val: any) => {

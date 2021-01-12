@@ -17,14 +17,19 @@ import {
 import { DateTimeFormatter } from "js-joda";
 import { identity } from "../../misc/typeguards";
 
-// tslint:disable-next-line:no-unnecessary-callback-wrapper — preserve types
-export const serializeId = (id: Id<any>): number => Number(id);
+const serializeIdOfType = (id: string, type: string) => {
+    const utf8 = Buffer.from(id, "hex").toString("utf8");
+    const [actualType, serializedId] = utf8.split(":");
+    if (!actualType || actualType !== type) { throw new Error(`Id type mismatch, expected '${ type }', got '${ actualType }' in id '${ utf8 }'`); }
+    if (!serializedId) { throw new Error(`No serialized id in '${ utf8 }'`); }
+    return Number(serializedId);
+};
 
-// tslint:disable-next-line:no-unnecessary-callback-wrapper — preserve types
-export const serializeVersionId = (version: VersionId): number => Number(version);
+export const serializeId = (id: Id<any>): number => serializeIdOfType(id, "id");
+export const serializeVersionId = (version: VersionId): number => serializeIdOfType(version, "v");
 
-export const serializeUserId = (userId: UserId): number => isNamedUserId(userId) ? namedUserId(userId) : Number(userId);
-export const serializeBranchId = (branchId: BranchId): number => isNamedBranchId(branchId) ? namedBranchId(branchId) : Number(branchId);
+export const serializeUserId = (userId: UserId): number => isNamedUserId(userId) ? namedUserId(userId) : serializeIdOfType(userId, "u");
+export const serializeBranchId = (branchId: BranchId): number => isNamedBranchId(branchId) ? namedBranchId(branchId) : serializeIdOfType(branchId, "b");
 
 
 export const pgLocalDateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
