@@ -5,9 +5,17 @@ import {
     PrimitiveUser, PrimitiveValue,
     PrimitiveVersion
 } from "../../definition/primitives";
+import { objectKeys } from "../../misc/typeguards";
 
 export type InternalFKPrimitive = PrimitiveBranch | PrimitiveUser;
 export type InternalFKRef<T extends InternalFKPrimitive> = { ref: T };
+
+const _internalFkPrimitiveTypes: { [P in InternalFKPrimitive["primitive_type"]]: null } = {
+    branch: null,
+    user: null,
+};
+const internalFkPrimitiveTypes = objectKeys(_internalFkPrimitiveTypes);
+export const isInternalFKPrimitive = (primitive: DataPrimitive): primitive is InternalFKPrimitive => internalFkPrimitiveTypes.includes(primitive.primitive_type as any);
 
 export type InternalFKPrimitiveDefinitions = {
     user: {
@@ -15,7 +23,7 @@ export type InternalFKPrimitiveDefinitions = {
         shape: {
             id: PrimitiveUser,
             ts: PrimitiveLocalDateTime,
-            createdBy: InternalFKRef<PrimitiveUser>; // Root user is created by Root to avoid `null` on this field
+            created_by: InternalFKRef<PrimitiveUser>; // Root user is created by Root to avoid `null` on this field
         }
     },
     branch: {
@@ -23,9 +31,9 @@ export type InternalFKPrimitiveDefinitions = {
         shape: {
             id: PrimitiveBranch,
             ts: PrimitiveLocalDateTime,
-            branchedFrom: InternalFKRef<PrimitiveBranch>; // Root branch is created from master to avoid `null` on this field
-            startVersion: PrimitiveVersion;
-            createdBy: InternalFKRef<PrimitiveUser>;
+            branched_from: InternalFKRef<PrimitiveBranch>; // Root branch is created from master to avoid `null` on this field
+            start_version: PrimitiveVersion;
+            created_by: InternalFKRef<PrimitiveUser>;
         }
     },
 };

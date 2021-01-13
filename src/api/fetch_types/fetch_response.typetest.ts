@@ -28,8 +28,8 @@ is<FetchResponse<TestReference, {}> | null>(response({ one: {} }).one); // Refer
 noop(response({}).many);
 is<FetchResponse<TestReference, {}>[]>(response({ many: {} }).many); // Reference present
 
-is<BranchId>(response({ one: { internalFK: {} } }).one!.internalFK.branchedFrom);
-is<InternalFKPrimitiveFetchResponse<PrimitiveBranch, {}>>(response({ one: { internalFK: { branchedFrom: {} } } }).one!.internalFK.branchedFrom);
+is<BranchId>(response({ one: { internalFK: {} } }).one!.internalFK!.branched_from);
+is<InternalFKPrimitiveFetchResponse<PrimitiveBranch, {}>>(response({ one: { internalFK: { branched_from: {} } } }).one!.internalFK!.branched_from);
 
 // Check traversing inverse reference
 is<FetchResponse<TestTarget, {}> | null>(response({ one: { inverse: {} } }).one!.inverse);

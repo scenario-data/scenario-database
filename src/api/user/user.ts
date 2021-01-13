@@ -7,7 +7,7 @@ import { UserApi } from "./user_api";
 
 export const createUserApi = (queryRunner: QueryRunner): UserApi => async createdBy => {
     const res = await queryRunner.query(pgFormat(
-        `INSERT INTO "public"."user" ("parent") VALUES (%L) RETURNING "id"`,
+        `INSERT INTO "public"."user" ("created_by") VALUES (%L) RETURNING "id"`,
         [serializeUserId(createdBy)]
     ));
 

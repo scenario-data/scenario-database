@@ -1,4 +1,4 @@
-import { ReadIdentifiedNode, ReadReferenceNode } from "./request_structure";
+import { ReadIdentifiedNode, ReadInternalRefNode, ReadReferenceNode } from "./request_structure";
 import { EntityDef, EntityRestriction } from "../../definition/entity";
 import { pgFormat } from "../../misc/pg_format";
 import { isNotNull, nevah, objectKeys } from "../../misc/typeguards";
@@ -10,22 +10,22 @@ import { internalReadKeys } from "./internal_read_keys";
 
 export function generateBranchRangesCTE(branch: BranchId) {
     return pgFormat(`
-        RECURSIVE branch_ranges(branch, start_version, end_version, parent) AS (
+        RECURSIVE branch_ranges(branch, start_version, end_version, branched_from) AS (
                 SELECT
                     id as branch,
                     start_version,
                     9223372036854775807 as end_version,
-                    parent
+                    branched_from
                 FROM "public"."branch" current
                 WHERE current.id = %L /* Target branch */
             UNION
                 SELECT
-                    b.id  as branch,
+                    b.id as branch,
                     b.start_version,
                     p.start_version as end_version,
-                    b.parent
+                    b.branched_from
                 FROM "public"."branch" b
-                RIGHT JOIN branch_ranges p ON (p.parent = b.id)
+                RIGHT JOIN branch_ranges p ON (p.branched_from = b.id)
                 WHERE b.id IS NOT NULL
         )
     `, [serializeBranchId(branch) /* Target branch */]);
@@ -34,7 +34,7 @@ export function generateBranchRangesCTE(branch: BranchId) {
 
 export function generateSql<Entity extends EntityRestriction<Entity>>(structure: ReadIdentifiedNode<Entity>): string {
     const outerSelections = generateSelections(structure.type, structure.alias, structure.nested.map(n => ({ key: n.resultKey, target: n.tableName, alias: n.alias })), "outer");
-    const innerSelections = generateSelections(structure.type, "entity", structure.nested.filter(n => n.parentTargetColumn !== "id").map(n => ({ key: n.resultKey, target: n.tableName, alias: n.alias })), "inner");
+    const innerSelections = generateSelections(structure.type, "entity", structure.nested.filter(n => n.parentTargetColumn !== "id" && n.nodeType !== "internalReference").map(n => ({ key: n.resultKey, target: n.tableName, alias: n.alias })), "inner");
     const composedJson = pgFormat(`
         SELECT %s /* outer selections */
         FROM (
@@ -73,10 +73,15 @@ export function generateSql<Entity extends EntityRestriction<Entity>>(structure:
     `, [generateBranchRangesCTE(structure.branch), composedJson]);
 }
 
+function generateJoin(structure: ReadReferenceNode<any> | ReadInternalRefNode): string {
+    if ("type" in structure) { return generateReferenceJoin(structure); }
+    return generateInternalJoin(structure);
+}
 
-function generateJoin<Entity extends EntityRestriction<Entity>>(structure: ReadReferenceNode<Entity>): string {
+
+function generateReferenceJoin<Entity extends EntityRestriction<Entity>>(structure: ReadReferenceNode<Entity>): string {
     const outerSelections = generateSelections(structure.type, structure.alias, structure.nested.map(n => ({ key: n.resultKey, target: n.tableName, alias: n.alias })), "outer");
-    const innerSelections = generateSelections(structure.type, "entity", structure.nested.filter(n => n.parentTargetColumn !== "id").map(n => ({ key: n.resultKey, target: n.tableName, alias: n.alias })), "inner");
+    const innerSelections = generateSelections(structure.type, "entity", structure.nested.filter(n => n.parentTargetColumn !== "id" && n.nodeType !== "internalReference").map(n => ({ key: n.resultKey, target: n.tableName, alias: n.alias })), "inner");
     const composedJson = pgFormat(`
         SELECT %s /* outer selections */
         FROM (
@@ -138,6 +143,37 @@ function generateJoin<Entity extends EntityRestriction<Entity>>(structure: ReadR
             nevah(structure.count);
             throw new Error("Unhandled count");
     }
+}
+
+function generateInternalJoin(structure: ReadInternalRefNode): string {
+    const innerSelections = structure.selections.map(col => pgFormat("%I.%I", ["entity", col]));
+    const outerSelectionOwnColumns = structure.selections.map(col => pgFormat("%I.%I", [structure.alias, col]));
+    const outerSelectionNestedColumns = structure.nested.map(n => pgFormat("%I.%I", [n.alias, n.resultKey]));
+
+    const composedJson = pgFormat(`
+        SELECT %s /* outer selections */
+        FROM (
+            SELECT %s /* inner selections */
+            FROM "public".%I entity
+            WHERE entity.id = %I.%I /* parent target column on parent alias */
+        ) %I /* alias */
+        %s /* Nested joins */
+    `, [
+        [...outerSelectionOwnColumns, ...outerSelectionNestedColumns].join(", "), innerSelections.join(", "),
+        structure.tableName,
+        structure.parentAlias, structure.parentTargetColumn,
+        structure.alias,
+        structure.nested.map(generateInternalJoin).join("\n"),
+    ]);
+
+    return pgFormat(`
+        LEFT JOIN LATERAL (
+            SELECT row_to_json(entity) AS %I FROM (
+                %s
+            ) entity
+            LIMIT 1
+        ) %I on true
+    `, [structure.resultKey, composedJson, structure.alias]);
 }
 
 function generateSelections<Entity extends EntityRestriction<Entity>>(

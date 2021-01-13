@@ -14,8 +14,8 @@ is<IndexPath<TestTarget, PrimitiveInt>>(indexPath<TestTarget>().one.inverse.tgtP
 
 is<IndexPath<TestTarget, PrimitiveBranch>>(indexPath<TestTarget>().one.internalFK);
 is<IndexPath<TestTarget, PrimitiveLocalDateTime>>(indexPath<TestTarget>().one.internalFK.ts);
-is<IndexPath<TestTarget, PrimitiveUser>>(indexPath<TestTarget>().one.internalFK.branchedFrom.createdBy.createdBy);
-is<IndexPath<TestTarget, PrimitiveLocalDateTime>>(indexPath<TestTarget>().one.internalFK.branchedFrom.createdBy.createdBy.ts);
+is<IndexPath<TestTarget, PrimitiveUser>>(indexPath<TestTarget>().one.internalFK.branched_from.created_by.created_by);
+is<IndexPath<TestTarget, PrimitiveLocalDateTime>>(indexPath<TestTarget>().one.internalFK.branched_from.created_by.created_by.ts);
 
 
 // @ts-expect-error — don't reference internal id, same can be achieved by making 1 less hop.
@@ -31,7 +31,7 @@ noop(indexPath<TestTarget>().one.asdfdsafsdf);
 noop(indexPath<TestTarget>().many.refProp);
 
 declare function target<P extends IndexPath<any, IndexTarget>>(p: P): IndexPathTarget<P>;
-is<PrimitiveLocalDateTime>(target(indexPath<TestTarget>().one.internalFK.branchedFrom.createdBy.createdBy.ts));
+is<PrimitiveLocalDateTime>(target(indexPath<TestTarget>().one.internalFK.branched_from.created_by.created_by.ts));
 is<"id">(target(indexPath<TestTarget>().one.target.id));
 
 // @ts-expect-error — Expected type mismatch

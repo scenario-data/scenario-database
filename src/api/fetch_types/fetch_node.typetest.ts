@@ -22,9 +22,9 @@ test({
 });
 
 // Traversing internal fk
-test({ one: { internalFK: { branchedFrom: { createdBy: { createdBy: {} } } } } });
+test({ one: { internalFK: { branched_from: { created_by: { created_by: {} } } } } });
 
-test({ one: { internalFK: { branchedFrom: { createdBy: { createdBy: {
+test({ one: { internalFK: { branched_from: { created_by: { created_by: {
     // @ts-expect-error — Deep nonexistent reference on internal fk
     blah: {},
 } } } } } });

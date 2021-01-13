@@ -810,4 +810,134 @@ describe("Database read", () => {
         expect(item1).to.have.property("id", id2);
         expect(item2).to.have.property("id", id1);
     });
+
+    it("Should read internal foreign keys", async () => {
+        @entity()
+        class Target {
+            public brnch = primitiveBranch();
+            public usr = primitiveUser();
+        }
+        const universe = { Target };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const [itemId] = await insert(queryRunner, universe, [{
+            branch: masterBranchId,
+            user: rootUserId,
+            type: Target,
+            value: { brnch: masterBranchId, usr: rootUserId },
+        }]);
+
+        const read = createRead(queryRunner, universe);
+        const { data } = await read({ data: {
+            type: Target,
+            ids: [itemId],
+            branch: masterBranchId,
+            references: {
+                brnch: { branched_from: { branched_from: { created_by: { created_by: {} } } }, created_by: {} },
+                usr: { created_by: {} },
+            },
+        } });
+
+        const item = atLeastOne(data)[0];
+        expect(item.brnch?.created_by.id).to.eql(rootUserId);
+        expect(item.brnch?.branched_from.id).to.eql(masterBranchId);
+        expect(item.brnch?.branched_from.branched_from.created_by.created_by.id).to.eql(rootUserId);
+        expect(item.usr?.created_by.id).to.eql(rootUserId);
+    });
+
+    it("Should throw if references contain a nonexistent key", async () => {
+        @entity() class Target {} // tslint:disable-line:no-unnecessary-class
+        const universe = { Target };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const [itemId] = await insert(queryRunner, universe, [{
+            branch: masterBranchId,
+            user: rootUserId,
+            type: Target,
+            value: {},
+        }]);
+
+        const read = createRead(queryRunner, universe);
+        return expectToFail(
+            () => read({ basic: {
+                type: Target,
+                ids: [itemId],
+                branch: masterBranchId,
+                references: { nonexistent: {} } as any,
+            } }),
+            e => expect(e.message).to.match(/does not exists/)
+        );
+    });
+
+    it("Should throw if references select a primitive that is not an internal fk", async () => {
+        @entity() class Target { public prop = primitiveString(); }
+        const universe = { Target };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const [itemId] = await insert(queryRunner, universe, [{
+            branch: masterBranchId,
+            user: rootUserId,
+            type: Target,
+            value: {},
+        }]);
+
+        const read = createRead(queryRunner, universe);
+        return expectToFail(
+            () => read({ basic: {
+                    type: Target,
+                    ids: [itemId],
+                    branch: masterBranchId,
+                    references: { prop: {} } as any,
+                } }),
+            e => expect(e.message).to.match(/not a data reference or internal fk definition/)
+        );
+    });
+
+    it("Should throw if references select a field that does not exists on internal fk ref", async () => {
+        @entity() class Target { public brnch = primitiveBranch(); }
+        const universe = { Target };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const [itemId] = await insert(queryRunner, universe, [{
+            branch: masterBranchId,
+            user: rootUserId,
+            type: Target,
+            value: {},
+        }]);
+
+        const read = createRead(queryRunner, universe);
+        return expectToFail(
+            () => read({ basic: {
+                    type: Target,
+                    ids: [itemId],
+                    branch: masterBranchId,
+                    references: { brnch: { nonexistent: {} } as any },
+                } }),
+            e => expect(e.message).to.match(/not in internal fk shape/)
+        );
+    });
+
+    it("Should throw if references select a field that is not an internal fk ref", async () => {
+        @entity() class Target { public brnch = primitiveBranch(); }
+        const universe = { Target };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const [itemId] = await insert(queryRunner, universe, [{
+            branch: masterBranchId,
+            user: rootUserId,
+            type: Target,
+            value: {},
+        }]);
+
+        const read = createRead(queryRunner, universe);
+        return expectToFail(
+            () => read({ basic: {
+                    type: Target,
+                    ids: [itemId],
+                    branch: masterBranchId,
+                    references: { brnch: { id: {} } as any },
+                } }),
+            e => expect(e.message).to.match(/not an internal ref/)
+        );
+    });
 });

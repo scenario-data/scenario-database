@@ -36,7 +36,7 @@ index("some_index", TestTarget, {
         conditions: ["eq"],
     },
     internalFKDeep: {
-        target: indexPath<TestTarget>().one.internalFK.branchedFrom.createdBy.createdBy.ts,
+        target: indexPath<TestTarget>().one.internalFK.branched_from.created_by.created_by.ts,
         conditions: ["lt", "gt"],
     },
 });

@@ -73,11 +73,11 @@ export async function prepare(queryRunner: QueryRunner) {
     await queryRunner.query(`CREATE TABLE "public"."user" (
         "id" SERIAL NOT NULL,
         "ts" TIMESTAMP without time zone NOT NULL DEFAULT now(),
-        "parent" INT,
+        "created_by" INT,
 
         CONSTRAINT "PK_USER_ID" PRIMARY KEY ("id")
     )`);
-    await queryRunner.query(pgFormat(`ALTER TABLE "public"."user" ADD CONSTRAINT %I FOREIGN KEY ("parent") REFERENCES "public"."user"("id")`, [`FK_USER_PARENT`]));
+    await queryRunner.query(pgFormat(`ALTER TABLE "public"."user" ADD CONSTRAINT %I FOREIGN KEY ("created_by") REFERENCES "public"."user"("id")`, [`FK_USER_PARENT`]));
 
     // Add root and anonymous users
     await queryRunner.query(`INSERT INTO "public"."user" ("id") VALUES (DEFAULT), (DEFAULT)`);
@@ -87,19 +87,19 @@ export async function prepare(queryRunner: QueryRunner) {
     await queryRunner.query(`CREATE TABLE "public"."branch" (
         "id" SERIAL NOT NULL,
         "start_version" INT NOT NULL DEFAULT currval('edit_version_seq'::regclass),
-        "parent" INT,
+        "branched_from" INT,
         "ts" TIMESTAMP without time zone NOT NULL DEFAULT now(),
-        "by" INT NOT NULL,
+        "created_by" INT NOT NULL,
 
         CONSTRAINT "PK_BRANCH_ID" PRIMARY KEY ("id")
     )`);
-    await queryRunner.query(pgFormat(`ALTER TABLE "public"."branch" ADD CONSTRAINT %I FOREIGN KEY ("parent") REFERENCES "public"."branch"("id")`, [`FK_BRANCH_PARENT`]));
-    await queryRunner.query(pgFormat(`ALTER TABLE "public"."branch" ADD CONSTRAINT %I FOREIGN KEY ("by") REFERENCES "public"."user"("id")`, [`FK_BRANCH_OWNER`]));
+    await queryRunner.query(pgFormat(`ALTER TABLE "public"."branch" ADD CONSTRAINT %I FOREIGN KEY ("branched_from") REFERENCES "public"."branch"("id")`, [`FK_BRANCH_PARENT`]));
+    await queryRunner.query(pgFormat(`ALTER TABLE "public"."branch" ADD CONSTRAINT %I FOREIGN KEY ("created_by") REFERENCES "public"."user"("id")`, [`FK_BRANCH_OWNER`]));
     await queryRunner.query(`CREATE INDEX "BRANCH_ID" ON "public"."branch" ("id")`);
-    await queryRunner.query(`CREATE INDEX "BRANCH_PARENT" ON "public"."branch" ("parent")`);
+    await queryRunner.query(`CREATE INDEX "BRANCH_PARENT" ON "public"."branch" ("branched_from")`);
 
     // Insert master and meta branches, both without parents and owned by root
-    await queryRunner.query(`INSERT INTO "public"."branch" ("start_version", "by") VALUES (nextval('edit_version_seq'::regclass), 1), (nextval('edit_version_seq'::regclass), 1)`);
+    await queryRunner.query(`INSERT INTO "public"."branch" ("start_version", "created_by") VALUES (nextval('edit_version_seq'::regclass), 1), (nextval('edit_version_seq'::regclass), 1)`);
 
     await queryRunner.query(`CREATE TABLE "public"."index_meta" (
         "id" SERIAL NOT NULL,
