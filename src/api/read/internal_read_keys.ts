@@ -1,7 +1,7 @@
-import { InternalProperty } from "../migrations/migrations_builder_api";
+import { InternalEntityProp } from "../migrations/migrations_builder_api";
 import { objectKeys } from "../../misc/typeguards";
 
-type InternalReadKey = Exclude<InternalProperty, "branch" /* Branch not returned in a read */>;
+type InternalReadKey = Exclude<InternalEntityProp, "branch" /* Branch not returned in a read */>;
 const _internalProperties: { [P in InternalReadKey]: null } = {
     id: null,
     by: null,

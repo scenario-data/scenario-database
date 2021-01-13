@@ -25,6 +25,16 @@ const migrations = builder
     .removeField("t1", "removeme")
     .removeType("t0")
 
+    .addIndex("t1", "unnecessaryIndex")
+    .addIndex("t1", "someIndex")
+    .addIndexFields("someIndex", {
+        f1: { operators: ["eq", "neq"], path: ["str"] },
+        f2: { operators: ["eq", "neq"], path: ["int"] },
+    })
+
+    .removeIndex("unnecessaryIndex")
+    .removeIndexField("someIndex", "f1")
+
     .done();
 
 // @ts-expect-error — migrations should be a tuple with concrete length
@@ -174,6 +184,68 @@ builder.addType("t").removeField(
     // @ts-expect-error — property doesn't exists on `t`
     "blah"
 );
+
+
+builder.addType(
+    // @ts-expect-error — type name looks like an index
+    "index_blah"
+);
+
+builder.addType("t").addIndex("t", "idx").removeType(
+    // @ts-expect-error — can't remove a type referenced by an index
+    "t"
+);
+
+builder.removeIndex(
+    // @ts-expect-error — index doesn't exists
+    "blah"
+);
+
+builder.addType("t").addIndex("t", "t"); // No problem having index named exactly as a type
+
+builder.addType("t").addIndex("t", "idx").removeIndex(
+    // @ts-expect-error — index doesn't exists
+    "blah"
+);
+
+builder.addType("t").addIndex("t", "idx").addIndex("t",
+    // @ts-expect-error — index doesn't exists
+    "idx"
+);
+
+builder.addIndex(
+    // @ts-expect-error — type doesn't exists
+    "type",
+    "index"
+);
+
+builder.removeIndexField(
+    // @ts-expect-error — index doesn't exists
+    "idx",
+    "prop"
+);
+builder.addType("t").addIndex("t", "idx").removeIndexField("idx",
+    // @ts-expect-error — prop doesn't exists
+    "prop"
+);
+
+builder.addType("t").addPrimitives("t", { prop: primitiveString() }).addIndex("t", "idx").addIndexFields("idx", {
+    // @ts-expect-error — prop overrides internal
+    id: {
+        path: ["prop"],
+        operators: ["eq"],
+    },
+});
+
+builder.addType("t").addPrimitives("t", { prop: primitiveString() })
+    .addIndex("t", "idx").addIndexFields("idx", { prop: { path: ["prop"], operators: ["eq"] } })
+    .addIndexFields("idx", {
+        // @ts-expect-error — field already exists
+        prop: {
+            path: ["prop"],
+            operators: ["eq"],
+        },
+    });
 
 
 

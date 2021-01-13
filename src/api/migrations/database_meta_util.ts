@@ -1,4 +1,5 @@
 import { QueryRunner } from "../query_runner/query_runner_api";
+import { refColumnName } from "./execute_migrations";
 
 
 export async function tableExists(queryRunner: QueryRunner, table: string) {
@@ -27,4 +28,9 @@ export async function findColumnsContainingString(queryRunner: QueryRunner, str:
         table_name: r.table_name,
         column_name: r.column_name,
     }));
+}
+
+export async function findReferenceColumn(queryRunner: QueryRunner, table: string, propName: string): Promise<string | null> {
+    const res = await queryRunner.query(`SELECT "column_name" FROM "information_schema"."columns" WHERE "table_schema" = 'public' AND "table_name" = $1 AND "column_name" LIKE $2`, [table, `${ refColumnName(propName, "%") }`]);
+    return res.rows.length > 0 ? res.rows[0]!.column_name : null;
 }

@@ -1,13 +1,15 @@
-import { DatabaseMetadataRestriction } from "./metadata";
+import { DatabaseMetadata, DatabaseMetadataRestriction } from "./metadata";
 import { MigrationsApi } from "./migrations_builder_api";
 import {
+    AddIndexFieldsMigration,
+    AddIndexMigration,
     AddPrimitiveFieldsMigration, AddReferenceMigration,
     AddTypeMigration,
-    Migration, RemoveFieldMigration,
+    Migration, RemoveFieldMigration, RemoveIndexFieldMigration, RemoveIndexMigration,
     RemoveTypeMigration, RenameFieldMigration
 } from "../../definition/migrations";
 
-export function migrate<DB extends DatabaseMetadataRestriction<DB>>(_prevDefinition: DB): MigrationsApi<DB, []> {
+export function migrate<DB extends DatabaseMetadata & DatabaseMetadataRestriction<DB>>(_prevDefinition: DB): MigrationsApi<DB, []> {
     const migrations: Migration[] = [];
     const createApiMethod = <K extends keyof MigrationsApi<any, any> = never, M extends Migration = never>(creator: (...params: Parameters<MigrationsApi<any, any>[K]>) => M) => {
         return function(this: MigrationsApi<any, any>, ...params: any[]): any {
@@ -25,6 +27,14 @@ export function migrate<DB extends DatabaseMetadataRestriction<DB>>(_prevDefinit
 
         renameField: createApiMethod<"renameField", RenameFieldMigration<any, any, any>>((type, from, to) => ({ action: "renameField", type, from, to })),
         removeField: createApiMethod<"removeField", RemoveFieldMigration<any, any>>((type, field) => ({ action: "removeField", type, field })),
+
+
+        addIndex: createApiMethod<"addIndex", AddIndexMigration<any, any>>((type, index) => ({ action: "addIndex", type, name: index })),
+        removeIndex: createApiMethod<"removeIndex", RemoveIndexMigration<any>>(index => ({ action: "removeIndex", index })),
+
+        addIndexFields: createApiMethod<"addIndexFields", AddIndexFieldsMigration<any, any>>((index, fields) => ({ action: "addIndexFields", index, fields })),
+        removeIndexField: createApiMethod<"removeIndexField", RemoveIndexFieldMigration<any, any>>((index, field) => ({ action: "removeIndexField", index, field })),
+
 
         done() {
             return [...migrations];

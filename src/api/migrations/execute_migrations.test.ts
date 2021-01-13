@@ -2,7 +2,7 @@ import expect = require("expect.js");
 
 import { QueryRunner } from "../query_runner/query_runner_api";
 import { getQueryRunner } from "../query_runner/query_runner";
-import { executeMigrations, prepare, refColumnName } from "./execute_migrations";
+import { executeMigrations, indexTable, prepare, refColumnName } from "./execute_migrations";
 import { migrate } from "./migrations_builder";
 import { columnDataType, columnExists, tableExists } from "./database_meta_util";
 import { ApplyMigrations } from "./apply_migrations_api";
@@ -32,6 +32,8 @@ describe("Execute migrations", () => {
 
     const targetType = "MigrationTestTarget";
     const referenceType = "MigrationTestReference";
+    const indexName = "SomeIndex";
+    const indexTableName = indexTable(indexName);
     it("Should add types", async () => {
         await executeMigrations(
             queryRunner,
@@ -46,6 +48,18 @@ describe("Execute migrations", () => {
         expect(await columnExists(queryRunner, targetType, "ts")).to.be(true);
         expect(await columnExists(queryRunner, targetType, "by")).to.be(true);
         expect(await columnExists(queryRunner, targetType, "branch")).to.be(true);
+    });
+
+    it("Should throw if added type looks like an index", async () => {
+        return expectToFail(
+            () => executeMigrations(
+                queryRunner,
+                migrate({})
+                    .addType(indexTable(targetType) as string)
+                    .done()
+            ),
+            e => expect(e.message).to.match(/Type can not be an index/)
+        );
     });
 
     it("Should remove types", async () => {
@@ -76,6 +90,20 @@ describe("Execute migrations", () => {
                     .done()
             ),
             e => expect(e.message).to.match(/is referenced by/)
+        );
+    });
+
+    it("Should throw if removing an indexed type", async () => {
+        return expectToFail(
+            () => executeMigrations(
+                queryRunner,
+                migrate({})
+                    .addType(targetType)
+                    .addIndex(targetType, indexName)
+                    .removeType(targetType as any)
+                    .done()
+            ),
+            e => expect(e.message).to.match(/Type.*is indexed/)
         );
     });
 
@@ -179,6 +207,35 @@ describe("Execute migrations", () => {
         );
     });
 
+    it("Should throw if primitive of same name already exists when adding a primitive", async () => {
+        return expectToFail(
+            () => executeMigrations(
+                queryRunner,
+                migrate({})
+                    .addType(targetType)
+                    .addPrimitives(targetType, { prop: primitiveString() })
+                    .addPrimitives(targetType, { prop: primitiveString() } as any)
+                    .done()
+            ),
+            e => expect(e.message).to.match(/already exists/i)
+        );
+    });
+
+    it("Should throw if reference of same name already exists when adding a primitive", async () => {
+        return expectToFail(
+            () => executeMigrations(
+                queryRunner,
+                migrate({})
+                    .addType(targetType)
+                    .addType(referenceType)
+                    .addReference(targetType, "prop", referenceType)
+                    .addPrimitives(targetType, { prop: primitiveString() } as any)
+                    .done()
+            ),
+            e => expect(e.message).to.match(/already exists/i)
+        );
+    });
+
     it("Should add references between types", async () => {
         await executeMigrations(
             queryRunner,
@@ -204,6 +261,36 @@ describe("Execute migrations", () => {
                     .done()
             ),
             e => expect(e.message).to.match(/Unknown target type/)
+        );
+    });
+
+    it("Should throw if primitive of same name already exists when adding a reference", async () => {
+        return expectToFail(
+            () => executeMigrations(
+                queryRunner,
+                migrate({})
+                    .addType(targetType)
+                    .addType(referenceType)
+                    .addPrimitives(targetType, { prop: primitiveString() })
+                    .addReference(targetType, "prop" as any, referenceType)
+                    .done()
+            ),
+            e => expect(e.message).to.match(/already exists/i)
+        );
+    });
+
+    it("Should throw if reference of same name already exists when adding a reference", async () => {
+        return expectToFail(
+            () => executeMigrations(
+                queryRunner,
+                migrate({})
+                    .addType(targetType)
+                    .addType(referenceType)
+                    .addReference(targetType, "prop", targetType)
+                    .addReference(targetType, "prop" as any, referenceType)
+                    .done()
+            ),
+            e => expect(e.message).to.match(/already exists/i)
         );
     });
 
@@ -234,5 +321,186 @@ describe("Execute migrations", () => {
         expect(await columnExists(queryRunner, targetType, "int")).to.be(true);
     });
 
+    it("Should add indices", async () => {
+        await executeMigrations(
+            queryRunner,
+            migrate({})
+                .addType(targetType)
+                .addIndex(targetType, indexName)
+                .done()
+        );
 
+        expect(await tableExists(queryRunner, indexTableName)).to.be(true);
+        expect(await columnExists(queryRunner, indexTableName, "id")).to.be(true);
+        expect(await columnExists(queryRunner, indexTableName, "branch")).to.be(true);
+    });
+
+    it("Should throw if index target is an index", async () => {
+        return expectToFail(
+            () => executeMigrations(
+                queryRunner,
+                migrate({})
+                    .addType(targetType)
+                    .addIndex(indexTable(targetType) as any, indexName)
+                    .done()
+            ),
+            e => expect(e.message).to.match(/Index target type can not be an index/)
+        );
+    });
+
+    it("Should throw if index target doesn't exists", async () => {
+        return expectToFail(
+            () => executeMigrations(
+                queryRunner,
+                migrate({})
+                    .addType(targetType)
+                    .addIndex(referenceType as any, indexName)
+                    .done()
+            ),
+            e => expect(e.message).to.match(/Unknown target type/)
+        );
+    });
+
+    it("Should remove indices", async () => {
+        await executeMigrations(
+            queryRunner,
+            migrate({})
+                .addType(targetType)
+                .addIndex(targetType, indexName)
+                .removeIndex(indexName)
+                .done()
+        );
+
+        expect(await tableExists(queryRunner, indexTableName)).to.be(false);
+    });
+
+    it("Should add index fields", async () => {
+        const columnName = "prop";
+
+        await executeMigrations(
+            queryRunner,
+            migrate({})
+                .addType(targetType)
+                .addPrimitives(targetType, { [columnName]: primitiveString() })
+                .addIndex(targetType, indexName)
+                .addIndexFields(indexName, { [columnName]: {
+                    path: [columnName],
+                    operators: ["eq", "neq", "contains"],
+                } })
+                .done()
+        );
+
+        expect(await columnExists(queryRunner, indexTableName, columnName)).to.be(true);
+        expect(await columnDataType(queryRunner, targetType, columnName)).to.eql("text");
+    });
+
+    it("Should add index fields via referenced tables", async () => {
+        await executeMigrations(
+            queryRunner,
+            migrate({})
+                .addType(targetType)
+                .addType(referenceType)
+                .addReference(targetType, "ref", referenceType)
+                .addReference(referenceType, "tgt", targetType)
+                .addIndex(targetType, indexName)
+                .addIndexFields(indexName, { traversal: {
+                    path: ["ref", "tgt", "id"],
+                    operators: ["eq"],
+                } })
+                .done()
+        );
+
+        expect(await columnExists(queryRunner, indexTableName, "traversal")).to.be(true);
+        expect(await columnDataType(queryRunner, indexTableName, "traversal")).to.eql("integer");
+    });
+
+    it("Should throw if index field definition has an empty path", async () => {
+        return expectToFail(
+            () => executeMigrations(
+                queryRunner,
+                migrate({})
+                    .addType(targetType)
+                    .addPrimitives(targetType, { prop: primitiveString() })
+                    .addIndex(targetType, indexName)
+                    .addIndexFields(indexName, { prop: {
+                        path: [] as any,
+                        operators: ["eq"],
+                    } })
+                    .done()
+            ),
+            e => expect(e.message).to.match(/Empty index path/)
+        );
+    });
+
+    it("Should throw if index field definition has no operators", async () => {
+        return expectToFail(
+            () => executeMigrations(
+                queryRunner,
+                migrate({})
+                    .addType(targetType)
+                    .addPrimitives(targetType, { prop: primitiveString() })
+                    .addIndex(targetType, indexName)
+                    .addIndexFields(indexName, { prop: {
+                        path: ["prop"],
+                        operators: [] as any,
+                    } })
+                    .done()
+            ),
+            e => expect(e.message).to.match(/Empty operators list/)
+        );
+    });
+
+    it("Should throw if index field definition path points to nonexistent column", async () => {
+        return expectToFail(
+            () => executeMigrations(
+                queryRunner,
+                migrate({})
+                    .addType(targetType)
+                    .addPrimitives(targetType, { prop: primitiveString() })
+                    .addIndex(targetType, indexName)
+                    .addIndexFields(indexName, { prop: {
+                        path: ["does_not_exists"],
+                        operators: ["eq"],
+                    } })
+                    .done()
+            ),
+            e => expect(e.message).to.match(/does not exists/)
+        );
+    });
+
+    it("Should throw if index field definition path points to nonexistent reference column", async () => {
+        return expectToFail(
+            () => executeMigrations(
+                queryRunner,
+                migrate({})
+                    .addType(targetType)
+                    .addPrimitives(targetType, { prop: primitiveString() })
+                    .addIndex(targetType, indexName)
+                    .addIndexFields(indexName, { prop: {
+                        path: ["does_not_exists", "id"],
+                        operators: ["eq"],
+                    } })
+                    .done()
+            ),
+            e => expect(e.message).to.match(/Ref property.*not found/)
+        );
+    });
+
+    it("Should remove index fields", async () => {
+        await executeMigrations(
+            queryRunner,
+            migrate({})
+                .addType(targetType)
+                .addPrimitives(targetType, { prop: primitiveString() })
+                .addIndex(targetType, indexName)
+                .addIndexFields(indexName, { indexField: {
+                    path: ["prop"],
+                    operators: ["eq"],
+                } })
+                .removeIndexField(indexName, "indexField")
+                .done()
+        );
+
+        expect(await columnExists(queryRunner, indexTableName, "indexField")).to.be(false);
+    });
 });

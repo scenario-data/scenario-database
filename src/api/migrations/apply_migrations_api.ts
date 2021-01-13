@@ -1,11 +1,14 @@
 import { Object, List } from "ts-toolbelt";
-import { DatabaseMetadata, ReferenceMeta } from "./metadata";
+import { DatabaseMetadata, EntityMetadata, ReferenceMeta } from "./metadata";
 import {
+    AddIndexFieldsMigration,
+    AddIndexMigration,
     AddPrimitiveFieldsMigration, AddReferenceMigration,
     AddTypeMigration,
-    Migration, RemoveFieldMigration,
+    Migration, RemoveFieldMigration, RemoveIndexFieldMigration, RemoveIndexMigration,
     RemoveTypeMigration, RenameFieldMigration
 } from "../../definition/migrations";
+import { IndexName } from "./migrations_builder_api";
 
 
 type DropFirst<T extends readonly unknown[]> = T extends readonly [any, ...infer Tail] ? Tail : [];
@@ -27,6 +30,12 @@ export type ApplyMigrationUnchecked<Meta, M extends Migration> = Meta extends Da
     : M extends AddReferenceMigration<any, any, any> ? ApplyAddReference<Meta, M>
     : M extends RenameFieldMigration<any, any, any> ? ApplyRenameField<Meta, M>
     : M extends RemoveFieldMigration<any, any> ? ApplyRemoveField<Meta, M>
+
+    : M extends AddIndexMigration<any, any> ? ApplyAddIndex<Meta, M>
+    : M extends RemoveIndexMigration<any> ? ApplyRemoveIndex<Meta, M>
+    : M extends AddIndexFieldsMigration<any, any> ? ApplyAddIndexFields<Meta, M>
+    : M extends RemoveIndexFieldMigration<any, any> ? ApplyRemoveIndexField<Meta, M>
+
     : never
 ) : never;
 
@@ -51,12 +60,29 @@ type ApplyAddReference<Meta extends DatabaseMetadata, M> = M extends AddReferenc
 ) : never;
 
 type ApplyRenameField<Meta extends DatabaseMetadata, M> = M extends RenameFieldMigration<infer Type, infer From, infer To> ? (
-    Object.P.Merge<
-        Object.P.Omit<Meta, [Type, From]>,
-        [Type], { [F in To]: Meta[Type][From] }
-    >
+    Meta[Type] extends EntityMetadata
+        ? Object.P.Merge<
+            Object.P.Omit<Meta, [Type, From]>,
+            [Type], { [F in To]: Meta[Type][From] }
+        >
+        : Meta
 ) : never;
 
 type ApplyRemoveField<Meta extends DatabaseMetadata, M> = M extends RemoveFieldMigration<infer Type, infer Field> ? (
     Object.P.Omit<Meta, [Type, Field]>
+) : never;
+
+
+type ApplyAddIndex<Meta extends DatabaseMetadata, M> = M extends AddIndexMigration<infer Index, infer Type> ? (
+    Meta & { [P in IndexName<Index>]: { type: Type, fields: {} } }
+) : never;
+type ApplyRemoveIndex<Meta extends DatabaseMetadata, M> = M extends RemoveIndexMigration<infer Index> ? (
+    Omit<Meta, IndexName<Index>>
+) : never;
+
+type ApplyAddIndexFields<Meta extends DatabaseMetadata, M> = M extends AddIndexFieldsMigration<infer Index, infer Fields> ? (
+    Object.P.Merge<Meta, [IndexName<Index>, "fields"], Fields>
+) : never;
+type ApplyRemoveIndexField<Meta extends DatabaseMetadata, M> = M extends RemoveIndexFieldMigration<infer Index, infer Field> ? (
+    Object.P.Omit<Meta, [IndexName<Index>, "fields", Field]>
 ) : never;
