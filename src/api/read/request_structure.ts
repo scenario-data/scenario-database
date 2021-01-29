@@ -3,7 +3,7 @@ import { DataReference, isDataReference } from "../../definition/references";
 import { refColumnName } from "../migrations/execute_migrations";
 import { nevah, objectKeys } from "../../misc/typeguards";
 import { FetchNode, InternalFKPrimitiveRequestNode } from "../fetch_types/fetch_node";
-import { ReadRequest, ReadRequestData, ReadRequestTemporal } from "./read_api";
+import { ReadRequest, ReadRequestData } from "./read_api";
 import { getUniverseElementName, UniverseElement, UniverseRestriction } from "../universe";
 import {
     InternalFKPrimitive,
@@ -18,7 +18,7 @@ import {
     primitiveVersion
 } from "../../definition/primitives";
 
-export interface ReadIdentifiedNode<T extends EntityRestriction<T>> extends ReadRequestTemporal {
+export interface ReadIdentifiedNode<T extends EntityRestriction<T>> {
     nodeType: "identified";
     type: EntityDef<T>;
     tableName: string;
@@ -91,7 +91,6 @@ export function generateRequestStructure<Universe extends UniverseRestriction<Un
     return {
         nodeType: "identified",
         type: Type,
-        branch: req.branch,
         tableName,
         alias: ownAlias,
         nested: generateNestedStructure(req, tableName, Type, getTypeName, getAlias, ownAlias),

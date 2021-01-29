@@ -8,8 +8,8 @@ import { refColumnName } from "../migrations/execute_migrations";
 import { BranchId } from "../../temporal";
 import { internalReadKeys } from "./internal_read_keys";
 
-export function generateBranchRangesCTE(branch: BranchId) {
-    return pgFormat(`
+export function generateBranchRangesCTE(branch?: BranchId) {
+    const cte = `
         RECURSIVE branch_ranges(branch, start_version, end_version, branched_from) AS (
                 SELECT
                     id as branch,
@@ -17,7 +17,7 @@ export function generateBranchRangesCTE(branch: BranchId) {
                     9223372036854775807 as end_version,
                     branched_from
                 FROM "public"."branch" current
-                WHERE current.id = %L /* Target branch */
+                WHERE current.id = ${ branch === undefined ? "$1" : "%L" } /* Target branch */
             UNION
                 SELECT
                     b.id as branch,
@@ -28,7 +28,10 @@ export function generateBranchRangesCTE(branch: BranchId) {
                 RIGHT JOIN branch_ranges p ON (p.branched_from = b.id)
                 WHERE b.id IS NOT NULL
         )
-    `, [serializeBranchId(branch) /* Target branch */]);
+    `;
+
+    if (branch === undefined) { return cte; }
+    return pgFormat(cte, [serializeBranchId(branch) /* Target branch */]);
 }
 
 
@@ -40,20 +43,20 @@ export function generateSql<Entity extends EntityRestriction<Entity>>(structure:
         FROM (
             SELECT %s /* inner selections */
             FROM "public".%I entity
-            WHERE entity.id = ANY($1::int[]) /* Target IDs */
+            WHERE entity.id = ANY($2::int[]) /* Target IDs */
             AND entity.at = (
                 SELECT "innerEntity"."at"
                 FROM branch_ranges br /* For each branch find latest matching version */
                 INNER JOIN LATERAL (
-                    SELECT max("innerEntity"."at") as at
+                    SELECT "innerEntity"."at"
                     FROM "public".%I "innerEntity"
                     WHERE "innerEntity"."id" = "entity"."id"
                         AND "innerEntity".branch = br.branch
                         AND "innerEntity".at > br.start_version
                         AND "innerEntity".at <= br.end_version
                 ) "innerEntity" on true
-                WHERE "innerEntity"."at" IS NOT NULL
-                ORDER BY br.branch DESC /* Only interested in the most recent matching branch */
+                /* Only interested in the most recent version of the most recent matching branch */
+                ORDER BY br.branch DESC, "innerEntity".at DESC
                 LIMIT 1
             )
         ) %I /* alias */
@@ -70,7 +73,7 @@ export function generateSql<Entity extends EntityRestriction<Entity>>(structure:
         SELECT row_to_json(data) AS data FROM (
             %s
         ) data
-    `, [generateBranchRangesCTE(structure.branch), composedJson]);
+    `, [generateBranchRangesCTE(), composedJson]);
 }
 
 function generateJoin(structure: ReadReferenceNode<any> | ReadInternalRefNode): string {
@@ -92,15 +95,15 @@ function generateReferenceJoin<Entity extends EntityRestriction<Entity>>(structu
                 SELECT "innerEntity"."at"
                 FROM branch_ranges br /* For each branch find latest matching version */
                 INNER JOIN LATERAL (
-                    SELECT max("innerEntity"."at") as at
+                    SELECT "innerEntity"."at"
                     FROM "public".%I "innerEntity"
                     WHERE "innerEntity"."id" = "entity"."id"
                         AND "innerEntity".branch = br.branch
                         AND "innerEntity".at > br.start_version
                         AND "innerEntity".at <= br.end_version
                 ) "innerEntity" on true
-                WHERE "innerEntity"."at" IS NOT NULL
-                ORDER BY br.branch DESC /* Only interested in the most recent matching branch */
+                /* Only interested in the most recent version of the most recent matching branch */
+                ORDER BY br.branch DESC, "innerEntity"."at" DESC
                 LIMIT 1
             )
         ) %I /* alias */

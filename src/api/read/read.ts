@@ -1,28 +1,33 @@
-import { sortBy } from "lodash";
+import { flatten, sortBy } from "lodash";
 import { QueryRunner } from "../query_runner/query_runner_api";
 import { DatabaseRead } from "./read_api";
 import { UniverseRestriction } from "../universe";
 import { isNot, isUndefined, nevah, objectKeys } from "../../misc/typeguards";
-import {
-    DataPrimitive,
-    isDataPrimitive,
-    primitiveLocalDateTime,
-    PrimitiveValue
-} from "../../definition/primitives";
+import { DataPrimitive, isDataPrimitive, primitiveLocalDateTime, PrimitiveValue } from "../../definition/primitives";
 import { hydrateId, hydratePrimitive, hydrateUserId, hydrateVersionId } from "../db_values/hydrate";
 import { generateSql } from "./generate_sql";
-import { generateRequestStructure, getInternalFKShape } from "./request_structure";
-import { serializeId } from "../db_values/serialize";
+import {
+    generateRequestStructure,
+    getInternalFKShape,
+    ReadIdentifiedNode,
+    ReadInternalRefNode,
+    ReadReferenceNode
+} from "./request_structure";
+import { serializeBranchId, serializeId } from "../db_values/serialize";
 import { EntityDef, EntityShape, isId } from "../../definition/entity";
 import { isDataReference } from "../../definition/references";
 import {
     InternalFKPrimitive,
-    InternalFKPrimitiveDefinitions, InternalFKRef,
+    InternalFKPrimitiveDefinitions,
+    InternalFKRef,
     isInternalFKPrimitive
 } from "../fetch_types/internal_foreign_keys";
 import { rootUserId } from "../../user";
 import { masterBranchId } from "../../temporal";
 import { LocalDateTime, ZoneOffset } from "js-joda";
+import { executeIfExistsName, MAX_FN_NAME_LENGTH, safeCreateFnName } from "../migrations/execute_migrations";
+import { READ_VERSION } from "./read_version";
+import { hash } from "../../misc/hash";
 
 
 export const createRead = <Universe extends UniverseRestriction<Universe>>(queryRunner: QueryRunner, universe: Universe): DatabaseRead<Universe> => async requests => {
@@ -32,7 +37,34 @@ export const createRead = <Universe extends UniverseRestriction<Universe>>(query
         const req = requests[requestKey];
         if (req.ids.some(isNot(isId))) { throw new Error(`Request ids must match id type in section '${ requestKey }'`); }
 
-        const { rows } = await queryRunner.query(generateSql(generateRequestStructure(universe, req)), [req.ids.map(serializeId)]);
+        const ids = req.ids.map(serializeId);
+        const branch = serializeBranchId(req.branch);
+
+        const structure = generateRequestStructure(universe, req);
+        const storedFn = storedFnName(structure);
+
+        const { rows } = await queryRunner.query(`SELECT ${ executeIfExistsName }('${ storedFn }', $1, $2) as data`, [branch, ids]).then(async data => {
+            if (data.rows.length !== 1 || data.rows[0]?.data !== null) { return data; }
+
+            // This is a case when checker function determined target doesn't exists.
+            // Attempt to create a stored function.
+            const fnsql = `
+                CREATE FUNCTION ${ storedFn } (int, int[]) RETURNS SETOF JSON STABLE
+                AS $$
+                    BEGIN
+                        RETURN QUERY ${ generateSql(structure) };
+                    END;
+                $$ LANGUAGE plpgsql
+            `.replace(/\n/g, " ");
+            const res = await queryRunner.query(`SELECT res FROM ${ safeCreateFnName }('${ fnsql }') res`);
+
+            const storedFnCreated = Array.isArray(res.rows) && res.rows.length === 1 && res.rows[0]?.res === true;
+            if (storedFnCreated) { return queryRunner.query(`SELECT ${ executeIfExistsName }('${ storedFn }', $1, $2) as data`, [branch, ids]); }
+
+            // Stored function was not created due to lock from another query. Generate and execute a raw query.
+            return queryRunner.query(generateSql(structure), [branch, ids]);
+        });
+
         results[requestKey] = sortBy(
             rows.map(row => {
                 const r = row.data;
@@ -45,6 +77,21 @@ export const createRead = <Universe extends UniverseRestriction<Universe>>(query
 
     return results;
 };
+
+
+function treeDescription(node: ReadIdentifiedNode<EntityShape> | ReadReferenceNode<EntityShape> | ReadInternalRefNode): string[] {
+    const nested = flatten([...node.nested].map(treeDescription));
+    const ownDescription = node.nodeType !== "identified" ? `${ node.tableName }-${ node.parentTargetColumn }-${ node.resultKey }` : node.tableName;
+    return [ownDescription, ...nested];
+}
+const hashTree = (rootNode: ReadIdentifiedNode<EntityShape>): string => hash(treeDescription(rootNode).join(":"), 32);
+function storedFnName(rootNode: ReadIdentifiedNode<EntityShape>) {
+    const name = `ck_reader_${ READ_VERSION }_${ rootNode.tableName.slice(0, 15) }_${ hashTree(rootNode) }`;
+    if (process.env.NODE_ENV !== "production" && name.length > MAX_FN_NAME_LENGTH) {
+        throw new Error(`Generated function name is longer than psql limit: ${ name }`);
+    }
+    return name;
+}
 
 function hydrateResult(Type: EntityDef<EntityShape>, ref: any, res: any) {
     const typeDef = new Type();
