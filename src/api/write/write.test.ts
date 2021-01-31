@@ -860,4 +860,67 @@ describe("Database write", () => {
 
         expect(atLeastOne(create)[0]).to.have.property("by", newUser);
     });
+
+    it("Should write an entry for a defined id, which did not exist in a target branch before", async () => {
+        @entity() class Target { public prop = primitiveString(); }
+        const universe = { Target };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const write = createWrite(queryRunner, universe);
+        const createBranch = createBranching(queryRunner);
+
+        const newBranch = await createBranch(masterBranchId, rootUserId);
+        const { created } = await write(newBranch, rootUserId, {
+            created: {
+                type: Target,
+                returning: {},
+                values: [{ prop: "value" }],
+            },
+        });
+
+        const originalItem = atLeastOne(created)[0];
+        const { insert } = await write(masterBranchId, rootUserId, {
+            insert: {
+                type: Target,
+                returning: {},
+                values: [{ id: originalItem.id }], // Item id exists in the database, but not in master branch
+            },
+        });
+
+        const item = atLeastOne(insert)[0];
+        expect(item).to.have.property("id", originalItem.id);
+        expect(item).to.have.property("prop", null); // Does not receives a value from original item, because it's in another branch
+    });
+
+    it("Should write an entry with payload for a defined id, which did not exist in a target branch before", async () => {
+        @entity() class Target { public p1 = primitiveString(); public p2 = primitiveString(); }
+        const universe = { Target };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const write = createWrite(queryRunner, universe);
+        const createBranch = createBranching(queryRunner);
+
+        const newBranch = await createBranch(masterBranchId, rootUserId);
+        const { created } = await write(newBranch, rootUserId, {
+            created: {
+                type: Target,
+                returning: {},
+                values: [{ p1: "old", p2: "value" }],
+            },
+        });
+
+        const originalItem = atLeastOne(created)[0];
+        const { insert } = await write(masterBranchId, rootUserId, {
+            insert: {
+                type: Target,
+                returning: {},
+                values: [{ id: originalItem.id, p1: "new" }], // Item id exists in the database, but not in master branch
+            },
+        });
+
+        const item = atLeastOne(insert)[0];
+        expect(item).to.have.property("id", originalItem.id);
+        expect(item).to.have.property("p1", "new"); // Receives the new payload
+        expect(item).to.have.property("p2", null); // Does not receives a value from original item, because it's in another branch
+    });
 });

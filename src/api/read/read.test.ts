@@ -53,6 +53,9 @@ import { KeysHaving } from "../../misc/misc";
 import { nullableComparator } from "../../misc/comparisons";
 import { hydrateId, hydrateVersionId } from "../db_values/hydrate";
 import { expectToFail } from "../../misc/test_util";
+import { stub } from "sinon";
+import { ReadRequest } from "./read_api";
+import { migrate } from "../migrations/migrations_builder";
 
 const builtIns: { [P in keyof FetchResponse<{}, {}>]: ((val: unknown) => val is FetchResponse<{}, {}>[P]) } = {
     id: isId,
@@ -170,7 +173,7 @@ async function insert<
         const typeDef = new Type();
         const columnValues = objectKeys(item.value).map(prop => {
             const propValue = (item.value as any)[prop];
-            if (isUndefined(propValue) === undefined) { return null; }
+            if (isUndefined(propValue)) { return null; }
             if (prop === "id") { return { column: "id", value: serializeId(propValue) }; }
 
             const propDef = typeDef[prop];
@@ -223,6 +226,22 @@ describe("Database read", () => {
 
     afterEach(async () => {
         if (!queryRunner.isReleased()) { await queryRunner.rollbackTransaction(); }
+    });
+
+    it("Should return an empty array if there is no matching entity", async () => {
+        @entity() class Target {} // tslint:disable-line:no-unnecessary-class
+        const universe = { Target };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const read = createRead(queryRunner, universe);
+        const { empty } = await read({ empty: {
+            type: Target,
+            ids: [hydrateId(999)],
+            branch: masterBranchId,
+            references: {},
+        } });
+
+        expect(empty).to.have.length(0);
     });
 
     it("Should return basic info about the object", async () => {
@@ -939,5 +958,151 @@ describe("Database read", () => {
                 } }),
             e => expect(e.message).to.match(/not an internal ref/)
         );
+    });
+
+    it("Should return same results on repeated reads", async () => {
+        @entity() class Target {} // tslint:disable-line:no-unnecessary-class
+        const universe = { Target };
+        await executeMigrations(queryRunner, generateMigrations(universe));
+
+        const itemId = await insert(queryRunner, universe, [{
+            branch: masterBranchId,
+            user: rootUserId,
+            type: Target,
+            value: {},
+        }]);
+
+        const read = createRead(queryRunner, universe);
+
+        const req = {
+            r: {
+                type: Target,
+                branch: masterBranchId,
+                references: {},
+                ids: itemId,
+            },
+        };
+
+        const results = await Promise.all(Array.from(Array(3)).map(() => read(req)));
+        const r1 = atLeastOne(results)[0];
+        results.slice(1).forEach(r => {
+            expect(r).to.eql(r1); // All results must match
+        });
+    });
+});
+
+describe("Database read concurrency", () => {
+    @entity()
+    class T1 {
+        public prop = primitiveInt();
+        public t2 = hasOne(() => T2);
+    }
+
+    @entity()
+    class T2 {
+        public prop = primitiveInt();
+        public t1 = hasOneInverse(() => T1, "t2");
+    }
+    const universe = { T1, T2 };
+
+    let queryRunner: QueryRunner;
+    before(async () => {
+        queryRunner = await getQueryRunner("tst-read-api", devDbConnectionConfig, true);
+        await prepare(queryRunner);
+        await executeMigrations(queryRunner, generateMigrations(universe));
+    });
+
+    after(async () => {
+        const teardown = migrate({
+            T1: { prop: primitiveInt(), t2: { reference_target: "T2" } },
+            T2: { prop: primitiveInt() },
+        })
+            .removeField("T1", "t2")
+            .removeType("T2")
+            .removeType("T1")
+            .done();
+
+        await executeMigrations(queryRunner, teardown);
+        await queryRunner.release();
+    });
+
+    it("Should correctly fetch same data across multiple simultaneous transactions", async function() {
+        this.timeout(10000); // Slow test
+
+        const numEntities = 3;
+        const t2s = await insert(queryRunner, universe, atLeastOne(Array.from(Array(numEntities)).map((_, i) => ({
+            type: T2,
+            branch: masterBranchId,
+            value: { prop: i },
+            user: rootUserId,
+        }))));
+
+        const t1s = await insert(queryRunner, universe, atLeastOne(Array.from(Array(numEntities)).map((_, i) => ({
+            type: T1,
+            branch: masterBranchId,
+            value: { prop: i, t2: t2s[i] },
+            user: rootUserId,
+        }))));
+
+        const deepCopy = (x: object) => objectKeys(x).reduce((_agg, k) => {
+            const prop = x[k];
+            _agg[k] = isPlainObject(prop) ? deepCopy(prop) : prop;
+            return _agg;
+        }, {} as any);
+
+        // Generate progressively deep requests between t1 and t2, which is possible since they establish a circular graph
+        const maxDepth = 5;
+        const _generateRequests = (prev: FetchNode<T1>, tip: FetchNode<any>, iter: number): ReadRequest<T1, FetchNode<T1>>[] => {
+            if (iter > maxDepth) { return []; }
+
+            const next = {};
+            tip[(iter % 2 ? "t1" : "t2") as unknown as keyof typeof tip] = next;
+
+            const own = deepCopy(prev);
+            const reqs = _generateRequests(prev, next, iter + 1);
+
+            const r: ReadRequest<T1, FetchNode<T1>> = {
+                type: T1,
+                branch: masterBranchId,
+                ids: t1s,
+                references: own,
+            };
+
+            return [r, ...reqs];
+        };
+        const generateRequests = () => {
+            const tip = {};
+            return _generateRequests(tip, tip, 0);
+        };
+        const requests = generateRequests();
+
+        const createStoredFnFailed = stub();
+        await Promise.all(Array.from(Array(3)).map(async () => {
+            const qr1 = await getQueryRunner("tst-read-api", devDbConnectionConfig, true);
+            const qr2 = await getQueryRunner("tst-read-api", devDbConnectionConfig, true);
+
+            await qr1.startTransaction("SERIALIZABLE");
+            await qr2.startTransaction("SERIALIZABLE");
+
+            try {
+                const r1 = createRead(qr1, universe, createStoredFnFailed);
+                const r2 = createRead(qr2, universe, createStoredFnFailed);
+
+                const results = await Promise.all(requests.map(r => Promise.all([
+                    r1({ data: r }),
+                    r2({ data: r }),
+                ])));
+
+                results.forEach(([res1, res2]) => {
+                    expect(res1).to.eql(res2); // Read results must match across pairs — independent from transaction
+                });
+            } finally {
+                await qr1.rollbackTransaction();
+                await qr2.rollbackTransaction();
+            }
+        }));
+
+        // Check if test created a condition when creating stored function fails.
+        expect(createStoredFnFailed.called).to.be(true);
     });
 });

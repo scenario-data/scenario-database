@@ -86,21 +86,36 @@ interface CreateEntity {
 }
 const isCreateEntity = (val: AtomicChange): val is CreateEntity => val.operation === "create_entity";
 
-type AtomicChange = SetPrimitive | SetReference | UnsetReference | CreateEntity;
+interface PutEntity {
+    operation: "put_entity";
+    type: EntityDef<EntityShape>;
+    id: SavedID;
+    debugPath: Path<any, any>;
+}
+const isPutEntity = (val: AtomicChange): val is PutEntity => val.operation === "put_entity";
 
-const traverse = (getTransient: (t: EntityDef<EntityShape>) => string, Type: EntityDef<EntityShape>, value: any, debugPath: Path<any, any>): { id: DbId, changes: AtomicChange[] } => {
+type AtomicChange = SetPrimitive | SetReference | UnsetReference | CreateEntity | PutEntity;
+
+const selectChanges = (getTransientId: (t: EntityDef<EntityShape>) => string, Type: EntityDef<EntityShape>, value: any, debugPath: Path<any, any>): { id: DbId, changes: AtomicChange[] } => {
     if (!value || !isPlainObject(value)) { throw new Error(`Expected a plain object value, got: ${ JSON.stringify(value) }`); }
     if (!isId(value.id) && value.id !== undefined && !isExternalTransientId(value.id)) { throw new Error(`Entity id may only be an entity id, undefined or a transient id. Given: ${ JSON.stringify(value.id) }`); }
 
     const typeDef = new Type();
-    const id = value.id ? (isExternalTransientId(value.id) ? value.id : serializeId(value.id)) : getTransient(Type);
+    const id = value.id ? (isExternalTransientId(value.id) ? value.id : serializeId(value.id)) : getTransientId(Type);
 
-    const create: CreateEntity[] = value.id && !isExternalTransientId(value.id) ? [] : [{
-        operation: "create_entity",
-        type: Type,
-        id: id as TransientID,
-        debugPath,
-    }];
+    const create: (CreateEntity | PutEntity)[] = value.id && !isExternalTransientId(value.id)
+        ? [{
+            operation: "put_entity",
+            type: Type,
+            id: id as SavedID,
+            debugPath,
+        }]
+        : [{
+            operation: "create_entity",
+            type: Type,
+            id: id as TransientID,
+            debugPath,
+        }];
 
     return { id, changes: [...create, ...flatten(objectKeys(value).filter(isNot(isInternalReadKey)).map((prop): AtomicChange[] => {
         const val = value[prop];
@@ -131,7 +146,7 @@ const traverse = (getTransient: (t: EntityDef<EntityShape>) => string, Type: Ent
         const TargetType = propDef.target();
         switch (propDef.reference_type) {
             case "has_one":
-                const oneNestedItem = val !== null ? traverse(getTransient, TargetType, val, propPath) : null;
+                const oneNestedItem = val !== null ? selectChanges(getTransientId, TargetType, val, propPath) : null;
                 const hasOne: SetReference = {
                     operation: "set_reference",
                     type: Type,
@@ -155,7 +170,7 @@ const traverse = (getTransient: (t: EntityDef<EntityShape>) => string, Type: Ent
                     return [unsetRef];
                 }
 
-                const inverseNestedItem = traverse(getTransient, TargetType, val, propPath);
+                const inverseNestedItem = selectChanges(getTransientId, TargetType, val, propPath);
                 const hasOneInverse: SetReference = {
                     operation: "set_reference",
                     type: TargetType,
@@ -171,7 +186,7 @@ const traverse = (getTransient: (t: EntityDef<EntityShape>) => string, Type: Ent
                 if (!Array.isArray(val)) { throw new Error("Data for to-many relation must be an array"); }
                 return flatten(val.map((item, idx) => {
                     const itemPath = propPath[idx]!;
-                    const nestedItem = traverse(getTransient, TargetType, item, itemPath);
+                    const nestedItem = selectChanges(getTransientId, TargetType, item, itemPath);
                     const setRef: SetReference = {
                         operation: "set_reference",
                         type: TargetType,
@@ -192,7 +207,9 @@ const traverse = (getTransient: (t: EntityDef<EntityShape>) => string, Type: Ent
 };
 
 
-export const createWrite = <Universe extends UniverseRestriction<Universe>>(queryRunner: QueryRunner, universe: Universe): DatabaseWrite<Universe> => {
+export const createWrite = <
+    Universe extends UniverseRestriction<Universe>
+>(queryRunner: QueryRunner, universe: Universe): DatabaseWrite<Universe> => {
     const read = createRead(queryRunner, universe);
     const universeName = (Type: EntityDef<EntityShape>) => getUniverseElementName<UniverseShape>(universe, Type);
 
@@ -207,7 +224,7 @@ export const createWrite = <Universe extends UniverseRestriction<Universe>>(quer
         const resultIds = sectionKeys.reduce((_agg, k) => {
             const section = save[k]!;
             _agg[k] = section.values.map(item => {
-                const itemData = traverse(getTransientId, section.type, item, path()[k]!);
+                const itemData = selectChanges(getTransientId, section.type, item, path()[k]!);
 
                 // istanbul ignore if
                 if (itemData.changes.length === 0) { throw new Error("Implementation error: no changes"); }
@@ -224,6 +241,7 @@ export const createWrite = <Universe extends UniverseRestriction<Universe>>(quer
         const getItemKey = (Type: EntityDef<EntityShape>, id: DbId) => `${ universeName(Type) }_${ id }`;
         changes.forEach(change => {
             switch (change.operation) {
+                case "put_entity": return; // No-op
                 case "create_entity": return; // No-op
                 case "unset_reference": return; // No conflicts on unset: it is ok to unset reference and set it to another value
 
@@ -372,36 +390,39 @@ export const createWrite = <Universe extends UniverseRestriction<Universe>>(quer
                 return { prop, column: refColumnName(prop, universeName(propDef.target())) };
             });
 
-            const columnNamePlaceholders = columnNames.map(() => "%I");
-            const columnNamesAndOverridesPlaceholders = columnNames.map(({ prop }) => prop === unset.prop ? "%L" : "%I");
-            const columnNamesAndOverridesValues = columnNames.map(({ prop, column }) => prop === unset.prop ? null : column);
+            const columnNamePlaceholders = ["id", "branch", "at", "by", ...columnNames.map(() => "%I")];
+            const columnNamesAndOverridesPlaceholders = ["placeholder.id", "%L", "%L", "%L", ...columnNames.map(({ prop }) => prop === unset.prop ? "%L" : "entity.%I")];
+            const columnNamesAndOverridesValues = [serializeBranchId(branch), at, serializeUserId(user), ...columnNames.map(({ prop, column }) => prop === unset.prop ? null : column)];
 
             const updatedRes = await queryRunner.query(pgFormat(`
                 WITH %s
-                INSERT INTO "public".%I ("id", "branch", "at", "by", ${ columnNamePlaceholders.join(", ") /* Column names */ })
-                SELECT "id", %L, %L, %L, ${ columnNamesAndOverridesPlaceholders.join(", ") /* columns and overrides */ }
-                FROM "public".%I entity
-                WHERE entity.%I /* Target ref prop */ = %L /* Target reference id */
-                AND entity.at = (
-                    SELECT "innerEntity"."at"
-                    FROM branch_ranges br /* For each branch find latest matching version */
-                    INNER JOIN LATERAL (
-                        SELECT max("innerEntity"."at") as at
-                        FROM "public".%I "innerEntity"
+                INSERT INTO "public".%I (${ columnNamePlaceholders.join(", ") /* Column names */ })
+                SELECT ${ columnNamesAndOverridesPlaceholders.join(", ") /* columns and overrides */ }
+                FROM (select %L::int as id) placeholder /* Entity might not exist in a branch, so placeholder with left join ensures null values are provided */
+                LEFT JOIN (
+                    SELECT *
+                    FROM "public".%I entity
+                    WHERE entity.%I /* Target ref prop */ = %L /* Target reference id */
+                    AND entity.at = (
+                        SELECT "innerEntity"."at"
+                        FROM branch_ranges br /* For each branch find latest matching version */
+                        INNER JOIN "public".%I "innerEntity" ON true
                         WHERE "innerEntity"."id" = "entity"."id"
-                            AND "innerEntity".branch = br.branch
-                            AND "innerEntity".at > br.start_version
-                            AND "innerEntity".at <= br.end_version
-                    ) "innerEntity" on true
-                    WHERE "innerEntity"."at" IS NOT NULL
-                    ORDER BY br.branch DESC /* Only interested in the most recent matching branch */
-                    LIMIT 1
-                )
+                          AND "innerEntity".branch = br.branch
+                          AND "innerEntity".at > br.start_version
+                          AND "innerEntity".at <= br.end_version
+                        /* Only interested in the most recent version of the most recent matching branch */
+                        ORDER BY br.branch DESC, "innerEntity"."at" DESC
+                        LIMIT 1
+                    )
+                ) entity
+                ON (placeholder.id = entity.id)
                 RETURNING "id"
             `, [
                 generateBranchRangesCTE(branch),
                 tableName, ...columnNames.map(c => c.column),
-                serializeBranchId(branch), at, serializeUserId(user), ...columnNamesAndOverridesValues,
+                ...columnNamesAndOverridesValues,
+                unset.targetId,
                 tableName,
                 refColumnName(unset.prop, universeName(refPropDef.target())), unset.targetId,
                 tableName,
@@ -412,7 +433,12 @@ export const createWrite = <Universe extends UniverseRestriction<Universe>>(quer
 
 
         // Primitives and references on existing entities
-        const changesToUpdate = changes.filter(isEither(isBoth(isSetReference, isProp("id", isSavedId)), isBoth(isSetPrimitive, isProp("id", isSavedId))));
+        const changesToUpdate = changes.filter(
+            isEither(
+                isEither(isBoth(isSetReference, isProp("id", isSavedId)), isBoth(isSetPrimitive, isProp("id", isSavedId))),
+                isPutEntity
+            )
+        );
         for (const entityUpdates of map(groupBy(changesToUpdate, item => `${ getEntityName(item.type) }_${ item.id }`))) {
             const firstUpdate = atLeastOne(entityUpdates)[0];
             const tableName = universeName(firstUpdate.type);
@@ -421,6 +447,8 @@ export const createWrite = <Universe extends UniverseRestriction<Universe>>(quer
             const matchingUnsets = unsetEntities.filter(e => universeName(e.type) === universeName(firstUpdate.type) && e.id === id);
             const updates = entityUpdates.reduce((agg, update) => {
                 switch (update.operation) {
+                    case "put_entity": return agg;
+
                     case "set_primitive":
                         agg[update.prop] = update.serializedValue;
                         return agg;
@@ -449,43 +477,48 @@ export const createWrite = <Universe extends UniverseRestriction<Universe>>(quer
 
                 // istanbul ignore if
                 if (!isDataReference(propDef)) { nevah(propDef); }
+                if (propDef.reference_type !== "has_one") { return null; } // Only to-one columns exist in the db
                 return { prop, column: refColumnName(prop, universeName(propDef.target())) };
             }).filter(isNotNull);
 
             if (matchingUnsets.length === 0) {
                 // Insert new row
 
-                const columnNamePlaceholders = columnNames.map(() => "%I");
-                const columnNamesAndOverridesPlaceholders = columnNames.map(({ prop }) => prop in updates ? "%L" : "%I");
-                const columnNamesAndOverridesValues = columnNames.map(({ prop, column }) => prop in updates ? updates[prop] : column);
+                const columnNamesWithPlaceholders = ["id", "branch", "at", "by", ...columnNames.map(() => "%I")];
+                const columnNamesAndOverridesPlaceholders = ["placeholder.id", "%L", "%L", "%L", ...columnNames.map(({ prop }) => prop in updates ? "%L" : "entity.%I")];
+                const columnNamesAndOverridesValues = [serializeBranchId(branch), at, serializeUserId(user), ...columnNames.map(({ prop, column }) => prop in updates ? updates[prop] : column)];
                 await queryRunner.query(pgFormat(`
                     WITH %s
-                    INSERT INTO "public".%I ("id", "branch", "at", "by", ${ columnNamePlaceholders.join(", ") /* Column names */ })
-                    SELECT "id", %L, %L, %L, ${ columnNamesAndOverridesPlaceholders.join(", ") /* columns and overrides */ }
-                    FROM "public".%I entity
-                    WHERE entity.id = %L /* Target reference id */
-                    AND entity.at = (
-                        SELECT "innerEntity"."at"
-                        FROM branch_ranges br /* For each branch find latest matching version */
-                        INNER JOIN LATERAL (
-                            SELECT max("innerEntity"."at") as at
-                            FROM "public".%I "innerEntity"
-                            WHERE "innerEntity"."id" = "entity"."id"
-                                AND "innerEntity".branch = br.branch
-                                AND "innerEntity".at > br.start_version
-                                AND "innerEntity".at <= br.end_version
-                        ) "innerEntity" on true
-                        WHERE "innerEntity"."at" IS NOT NULL
-                        ORDER BY br.branch DESC /* Only interested in the most recent matching branch */
-                        LIMIT 1
-                    )
+                    INSERT INTO "public".%I (${ columnNamesWithPlaceholders.join(", ") /* Column names */ })
+                    SELECT ${ columnNamesAndOverridesPlaceholders.join(", ") /* columns and overrides */ }
+                    FROM (select %L::int as id) placeholder /* Entity might not exist in a branch, so placeholder with left join ensures null values are provided */
+                    LEFT JOIN (
+                        SELECT *
+                        FROM "public".%I entity
+                        WHERE entity.id = %L /* Target reference id */
+                        AND entity.at = (
+                            SELECT "innerEntity"."at"
+                            FROM branch_ranges br /* For each branch find latest matching version */
+                            INNER JOIN "public".%I "innerEntity" ON true
+                            WHERE "innerEntity"."id" = %L /* Target reference id */
+                              AND "innerEntity".branch = br.branch
+                              AND "innerEntity".at > br.start_version
+                              AND "innerEntity".at <= br.end_version
+                            /* Only interested in the most recent version of the most recent matching branch */
+                            ORDER BY br.branch DESC, "innerEntity"."at" DESC
+                            LIMIT 1
+                        )
+                    ) entity
+                    ON (placeholder.id = entity.id)
                 `, [
                     generateBranchRangesCTE(branch),
                     tableName, ...columnNames.map(c => c.column),
-                    serializeBranchId(branch), at, serializeUserId(user), ...columnNamesAndOverridesValues,
+                    ...columnNamesAndOverridesValues,
+                    id,
                     tableName,
                     id,
                     tableName,
+                    id,
                 ]));
             } else {
                 // Update row with unset reference
@@ -502,7 +535,7 @@ export const createWrite = <Universe extends UniverseRestriction<Universe>>(quer
         }
 
 
-        // Substitute transient ids into resulting ids
+        // Substitute transient ids into resulting ids and return the data
         const results: any = {};
         for (const sectionKey of sectionKeys) {
             const sectionDef = save[sectionKey]!;

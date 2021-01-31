@@ -251,6 +251,21 @@ describe("Execute migrations", () => {
         expect(await columnDataType(queryRunner, targetType, columnName)).to.eql("integer");
     });
 
+    it("Should remove reference fields", async () => {
+        await executeMigrations(
+            queryRunner,
+            migrate({})
+                .addType(targetType)
+                .addType(referenceType)
+                .addReference(targetType, "ref", referenceType)
+                .removeField(targetType, "ref")
+                .done()
+        );
+
+        const columnName = refColumnName(`ref`, referenceType);
+        expect(await columnExists(queryRunner, targetType, columnName)).to.be(false);
+    });
+
     it("Should throw if target type doesn't exists", async () => {
         return expectToFail(
             () => executeMigrations(
@@ -385,7 +400,7 @@ describe("Execute migrations", () => {
                 .addIndex(targetType, indexName)
                 .addIndexFields(indexName, { [columnName]: {
                     path: [columnName],
-                    operators: ["eq", "neq", "contains"],
+                    conditions: ["eq", "neq", "contains"],
                 } })
                 .done()
         );
@@ -405,7 +420,7 @@ describe("Execute migrations", () => {
                 .addIndex(targetType, indexName)
                 .addIndexFields(indexName, { traversal: {
                     path: ["ref", "tgt", "id"],
-                    operators: ["eq"],
+                    conditions: ["eq"],
                 } })
                 .done()
         );
@@ -424,7 +439,7 @@ describe("Execute migrations", () => {
                     .addIndex(targetType, indexName)
                     .addIndexFields(indexName, { prop: {
                         path: [] as any,
-                        operators: ["eq"],
+                        conditions: ["eq"],
                     } })
                     .done()
             ),
@@ -432,7 +447,7 @@ describe("Execute migrations", () => {
         );
     });
 
-    it("Should throw if index field definition has no operators", async () => {
+    it("Should throw if index field definition has no conditions", async () => {
         return expectToFail(
             () => executeMigrations(
                 queryRunner,
@@ -442,11 +457,11 @@ describe("Execute migrations", () => {
                     .addIndex(targetType, indexName)
                     .addIndexFields(indexName, { prop: {
                         path: ["prop"],
-                        operators: [] as any,
+                        conditions: [] as any,
                     } })
                     .done()
             ),
-            e => expect(e.message).to.match(/Empty operators list/)
+            e => expect(e.message).to.match(/Empty conditions list/)
         );
     });
 
@@ -460,7 +475,7 @@ describe("Execute migrations", () => {
                     .addIndex(targetType, indexName)
                     .addIndexFields(indexName, { prop: {
                         path: ["does_not_exists"],
-                        operators: ["eq"],
+                        conditions: ["eq"],
                     } })
                     .done()
             ),
@@ -478,7 +493,7 @@ describe("Execute migrations", () => {
                     .addIndex(targetType, indexName)
                     .addIndexFields(indexName, { prop: {
                         path: ["does_not_exists", "id"],
-                        operators: ["eq"],
+                        conditions: ["eq"],
                     } })
                     .done()
             ),
@@ -495,7 +510,7 @@ describe("Execute migrations", () => {
                 .addIndex(targetType, indexName)
                 .addIndexFields(indexName, { indexField: {
                     path: ["prop"],
-                    operators: ["eq"],
+                    conditions: ["eq"],
                 } })
                 .removeIndexField(indexName, "indexField")
                 .done()

@@ -10,3 +10,6 @@ export function doesNotThrow(fn: () => void) {
         return false;
     }
 }
+
+/* istanbul ignore next */
+export const noop = () => void 0;

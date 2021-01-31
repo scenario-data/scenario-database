@@ -1,11 +1,14 @@
 import { isInteger as _isInteger } from "lodash";
 import { LocalDate, LocalDateTime } from "js-joda";
+import { Misc } from "ts-toolbelt";
+type JSPrimitive = Misc.Primitive;
 
 export function objectKeys<T extends object>(obj: T): Array<Exclude<{ [P in keyof T]: P }[keyof T], undefined>> { return Object.keys(obj) as any; }
 
 export function isNot<In, Out extends In>(guard: (val: In) => val is Out) { return <T extends In>(val: T | Out): val is T => !guard(val); }
 export function isBoth<In, Out1 extends In, Out2 extends Out1>(guard1: (val: In) => val is Out1, guard2: (val: Out1) => val is Out2) { return (val: In): val is Out1 & Out2 => guard1(val) && guard2(val); }
 export function isEither<In, Out1 extends In, Out2 extends In>(guard1: (val: In) => val is Out1, guard2: (val: In) => val is Out2) { return (val: In): val is Out1 | Out2 => guard1(val) || guard2(val); }
+export function isExactly<Out extends JSPrimitive>(val: Out) { return (item: any): item is Out => item === val; }
 export function nullableGuard<In, Out extends In>(guard: (val: In) => val is Out) { return (val: In | null): val is Out | null => val === null ? true : guard(val); }
 
 export function isProp<In, Out extends In, K extends keyof any>(prop: K, guard: (val: In) => val is Out) { return <T extends { [P in K]: In | Out }>(val: T): val is T & { [P in K]: Out } => guard(val[prop]) as any; }

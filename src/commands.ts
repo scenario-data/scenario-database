@@ -101,6 +101,21 @@ yargs
         }
     )
 
+    .command("start_db", "Start the dev db container", {}, () => {
+        dbTasks();
+        start("start_db");
+    })
+
+    .command("dump_db", "Dump the db contents from the dev container", {}, () => {
+        dbTasks();
+        start("dump_db");
+    })
+
+    .command("restore_db", "Restore the dev db contents from the dump", {}, () => {
+        dbTasks();
+        start("load_db");
+    })
+
     .command("kill_db", "Stop and clean-up the dev db container", {}, () => {
         dbTasks();
         start("kill_db");

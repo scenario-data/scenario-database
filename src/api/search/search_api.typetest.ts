@@ -5,10 +5,10 @@ import { indexPath } from "../../definition/index/path";
 import { IndexRequestBuilder } from "../../definition/index/search_request";
 import { masterBranchId } from "../../temporal";
 import { FetchResponse } from "../fetch_types/fetch_response";
+import { asId } from "../../definition/entity";
 
 
 declare function is<Expected = never>(actual: Expected): void;
-declare const search: DatabaseSearch<TestUniverse>;
 declare const index: IndexDefinitionFn;
 
 const testIndex = index("some_index", TestTarget, {
@@ -34,6 +34,7 @@ const testIndex2 = index("some_index", TestTarget, {
 });
 
 declare const targetRequest: IndexRequestBuilder<TestTarget, typeof testIndex.targets>;
+declare const search: DatabaseSearch<TestUniverse, [typeof testIndex, typeof testIndex2]>;
 
 search(
     testIndex,
@@ -73,4 +74,21 @@ search(
 
     // @ts-expect-error — unknown reference
     { blah: {} }
+).then(() => void 0);
+
+
+const outOfScopeIndex = index("out_of_scope_index", TestTarget, {
+    id: {
+        target: indexPath<TestTarget>().id,
+        conditions: ["eq"],
+    },
+});
+declare const outOfScopeTargetRequest: IndexRequestBuilder<TestTarget, typeof outOfScopeIndex.targets>;
+
+search(
+    // @ts-expect-error — index not among specified in search api
+    outOfScopeIndex,
+    outOfScopeTargetRequest.data("id", { type: "eq", val: asId("tst") }),
+    masterBranchId,
+    {}
 ).then(() => void 0);

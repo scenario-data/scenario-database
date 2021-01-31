@@ -209,7 +209,7 @@ interface MigrationBuilderStepSafe<Iter extends Iteration.Iteration, Migrations 
 
     addIndexFields<
         Index extends IndexKeys<CurrentDB>,
-        Fields extends { [prop: string]: IndexFieldMeta } // TODO: better type safety around paths and operators
+        Fields extends { [prop: string]: IndexFieldMeta } // TODO: better type safety around paths and conditions
     >(
         index: Index,
         fields: Any.Cast<Fields, CurrentDB[IndexName<Index>] extends IndexMetadata<string> ? {

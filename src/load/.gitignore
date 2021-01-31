@@ -1,0 +1,14 @@
+# Reformatted watdiv_model
+model/watdiv_model
+
+# Generated dataset
+dataset
+dataset_branches
+dataset_users
+dataset_ids
+
+# Generated chicken-katsu datamodel
+datamodel.ts
+
+# Database dump
+dump.sql

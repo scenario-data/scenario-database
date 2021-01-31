@@ -28,9 +28,14 @@ import { LocalDateTime, ZoneOffset } from "js-joda";
 import { executeIfExistsName, MAX_FN_NAME_LENGTH, safeCreateFnName } from "../migrations/execute_migrations";
 import { READ_VERSION } from "./read_version";
 import { hash } from "../../misc/hash";
+import { noop } from "../../misc/misc";
 
 
-export const createRead = <Universe extends UniverseRestriction<Universe>>(queryRunner: QueryRunner, universe: Universe): DatabaseRead<Universe> => async requests => {
+export const createRead = <Universe extends UniverseRestriction<Universe>>(
+    queryRunner: QueryRunner,
+    universe: Universe,
+    onCreatingStoredFnFailed: () => void = noop
+): DatabaseRead<Universe> => async requests => {
     const results: any = {};
 
     for (const requestKey of objectKeys(requests)) {
@@ -44,7 +49,7 @@ export const createRead = <Universe extends UniverseRestriction<Universe>>(query
         const storedFn = storedFnName(structure);
 
         const { rows } = await queryRunner.query(`SELECT ${ executeIfExistsName }('${ storedFn }', $1, $2) as data`, [branch, ids]).then(async data => {
-            if (data.rows.length !== 1 || data.rows[0]?.data !== null) { return data; }
+            if (/* istanbul ignore next — ignore optional accessor */ data.rows.length !== 1 || data.rows[0]?.data !== null) { return data; }
 
             // This is a case when checker function determined target doesn't exists.
             // Attempt to create a stored function.
@@ -58,10 +63,12 @@ export const createRead = <Universe extends UniverseRestriction<Universe>>(query
             `.replace(/\n/g, " ");
             const res = await queryRunner.query(`SELECT res FROM ${ safeCreateFnName }('${ fnsql }') res`);
 
+            /* istanbul ignore next — ignore optional accessor */
             const storedFnCreated = Array.isArray(res.rows) && res.rows.length === 1 && res.rows[0]?.res === true;
             if (storedFnCreated) { return queryRunner.query(`SELECT ${ executeIfExistsName }('${ storedFn }', $1, $2) as data`, [branch, ids]); }
 
             // Stored function was not created due to lock from another query. Generate and execute a raw query.
+            onCreatingStoredFnFailed();
             return queryRunner.query(generateSql(structure), [branch, ids]);
         });
 
@@ -87,6 +94,8 @@ function treeDescription(node: ReadIdentifiedNode<EntityShape> | ReadReferenceNo
 const hashTree = (rootNode: ReadIdentifiedNode<EntityShape>): string => hash(treeDescription(rootNode).join(":"), 32);
 function storedFnName(rootNode: ReadIdentifiedNode<EntityShape>) {
     const name = `ck_reader_${ READ_VERSION }_${ rootNode.tableName.slice(0, 15) }_${ hashTree(rootNode) }`;
+
+    // istanbul ignore if
     if (process.env.NODE_ENV !== "production" && name.length > MAX_FN_NAME_LENGTH) {
         throw new Error(`Generated function name is longer than psql limit: ${ name }`);
     }

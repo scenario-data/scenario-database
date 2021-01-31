@@ -61,15 +61,69 @@ export async function executeMigration(queryRunner: QueryRunner, migration: Migr
 }
 
 
+export const safeCreateFnName = "ck_safe_create";
+const safeCreateFnDef = `${ safeCreateFnName }(text)`;
+export const executeIfExistsName = "ck_execute_if_exists";
+export const MAX_FN_NAME_LENGTH = 63;
+
 export async function prepare(queryRunner: QueryRunner) {
-    await queryRunner.query(`CREATE EXTENSION pg_trgm;`); // Enable trigram indices
+    await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm;`); // Enable trigram indices
+
+    // Safe create function (handles the case when two independent jobs create a same function in race condition)
+    // Creates and maintains the common lock on creating any query-builder functions until the current transaction that created a function terminates.
+    // Assuming that most queries will eventually be covered by stored functions and so locking won't be a performance problem.
+    // A single lock ensures no dead-locks would happen, but also may lead to slow queues.
+    await queryRunner.query(`
+        CREATE OR REPLACE FUNCTION ${ safeCreateFnDef } RETURNS BOOLEAN
+        AS $$
+            DECLARE
+                retries int := 5;
+                obtained_lock boolean := false;
+            BEGIN
+                LOOP
+                    retries := retries - 1;
+
+                    SELECT pg_try_advisory_xact_lock(922337203685) INTO STRICT obtained_lock;
+                    IF obtained_lock THEN
+                        EXIT;
+                    END IF;
+
+                    IF retries <= 0 THEN
+                        RETURN FALSE;
+                    END IF;
+
+                    PERFORM pg_sleep(.1);
+                END LOOP;
+
+                EXECUTE $1;
+                RETURN TRUE;
+            EXCEPTION
+                WHEN unique_violation THEN RETURN TRUE;
+                WHEN duplicate_function THEN RETURN TRUE;
+            END;
+        $$ LANGUAGE plpgsql
+    `.replace(/\n/g, " "));
+
+    // Execute if exists
+    await queryRunner.query(`
+        CREATE OR REPLACE FUNCTION ${ executeIfExistsName }(text, int, int[]) RETURNS SETOF JSON STABLE
+        AS $$
+            BEGIN
+                RETURN QUERY EXECUTE 'select res from ' || $1 || '($1, $2) res' using $2, $3;
+            EXCEPTION
+                WHEN undefined_function THEN RETURN NEXT null;
+            END;
+        $$ LANGUAGE plpgsql
+    `.replace(/\n/g, " "));
 
 
     // Create version sequence
+    await queryRunner.query(`DROP SEQUENCE IF EXISTS "edit_version_seq" CASCADE`);
     await queryRunner.query(`CREATE SEQUENCE "edit_version_seq" INCREMENT BY 1 NO MAXVALUE START WITH 1 NO CYCLE OWNED BY NONE;`);
 
 
     // Create user table
+    await queryRunner.query(`DROP TABLE IF EXISTS "public"."user" CASCADE`);
     await queryRunner.query(`CREATE TABLE "public"."user" (
         "id" SERIAL NOT NULL,
         "ts" TIMESTAMP without time zone NOT NULL DEFAULT now(),
@@ -84,9 +138,10 @@ export async function prepare(queryRunner: QueryRunner) {
 
 
     // Add branches table
+    await queryRunner.query(`DROP TABLE IF EXISTS "public"."branch" CASCADE`);
     await queryRunner.query(`CREATE TABLE "public"."branch" (
         "id" SERIAL NOT NULL,
-        "start_version" INT NOT NULL DEFAULT currval('edit_version_seq'::regclass),
+        "start_version" INT NOT NULL DEFAULT nextval('edit_version_seq'::regclass),
         "branched_from" INT,
         "ts" TIMESTAMP without time zone NOT NULL DEFAULT now(),
         "created_by" INT NOT NULL,
@@ -101,6 +156,7 @@ export async function prepare(queryRunner: QueryRunner) {
     // Insert master and meta branches, both without parents and owned by root
     await queryRunner.query(`INSERT INTO "public"."branch" ("start_version", "created_by") VALUES (nextval('edit_version_seq'::regclass), 1), (nextval('edit_version_seq'::regclass), 1)`);
 
+    await queryRunner.query(`DROP TABLE IF EXISTS "public"."index_meta" CASCADE`);
     await queryRunner.query(`CREATE TABLE "public"."index_meta" (
         "id" SERIAL NOT NULL,
         "name" text,
@@ -113,6 +169,8 @@ export async function prepare(queryRunner: QueryRunner) {
 
 const indexTablePrefix: IndexTablePrefix = "index_";
 export const indexTable = <T extends string>(name: T): `${ IndexTablePrefix }${ T }` => `${ indexTablePrefix }${ name }` as any;
+export const indexUniqBranchIdConstraint = (name: string) => `INDEX_UQ_${ hash(name, 16) }`;
+
 async function addType(queryRunner: QueryRunner, migration: AddTypeMigration<string>): Promise<void> {
     if (migration.type.indexOf(indexTablePrefix) > -1) { throw new Error(`Type can not be an index`); }
 
@@ -130,7 +188,10 @@ async function addType(queryRunner: QueryRunner, migration: AddTypeMigration<str
 
     await queryRunner.query(formatted);
     await queryRunner.query(pgFormat(`ALTER TABLE "public".%I ADD CONSTRAINT %I FOREIGN KEY ("by") REFERENCES "public"."user"("id")`, [migration.type, `FK_USER_${ nameHash }`]));
-    await queryRunner.query(pgFormat(`CREATE INDEX %I ON "public".%I ("branch", "id", "at")`, [`SELECT_BY_ID_IDX_${ nameHash }`, migration.type]));
+    await queryRunner.query(pgFormat(`CREATE INDEX %I ON "public".%I ("branch", "at")`, [`BRANCH_VERSION_IDX_${ nameHash }`, migration.type]));
+    await queryRunner.query(pgFormat(`CREATE INDEX %I ON "public".%I ("id", "at")`, [`ID_VERSION_IDX_${ nameHash }`, migration.type]));
+    await queryRunner.query(pgFormat(`CREATE INDEX %I ON "public".%I ("id", "branch", "at")`, [`ID_BRANCH_VERSION_IDX_${ nameHash }`, migration.type]));
+    await queryRunner.query(pgFormat(`CREATE INDEX %I ON "public".%I ("id", "at", "branch")`, [`ID_VERSION_BRANCH_IDX_${ nameHash }`, migration.type]));
 }
 
 export const refSuffix = (target: string) => `_ref_${ target }`;
@@ -229,7 +290,9 @@ async function addReference(queryRunner: QueryRunner, migration: AddReferenceMig
 
 async function removeField(queryRunner: QueryRunner, migration: RemoveFieldMigration<string, string>): Promise<void> {
     // TODO: check if field is used in any index
-    await queryRunner.query(pgFormat(`ALTER TABLE "public".%I DROP COLUMN %I`, [migration.type, migration.field]));
+
+    const refColumn = await findReferenceColumn(queryRunner, migration.type, migration.field);
+    await queryRunner.query(pgFormat(`ALTER TABLE "public".%I DROP COLUMN %I`, [migration.type, refColumn === null ? migration.field : refColumn]));
 }
 
 async function renameField(queryRunner: QueryRunner, migration: RenameFieldMigration<string, string, string>): Promise<void> {
@@ -245,8 +308,13 @@ async function addIndex(queryRunner: QueryRunner, migration: AddIndexMigration<s
         "branch" INT NOT NULL,
         "id" INT NOT NULL,
 
-        CONSTRAINT %I FOREIGN KEY ("branch") REFERENCES "public"."branch" ("id")
-    )`, [indexTable(migration.name), `FK_INDEX_BRANCH_${ hash(migration.name, 16) }`]));
+        CONSTRAINT %I FOREIGN KEY ("branch") REFERENCES "public"."branch" ("id"),
+        CONSTRAINT %I UNIQUE ("branch", "id")
+    )`, [
+        indexTable(migration.name),
+        `FK_INDEX_BRANCH_${ (hash(migration.name, 16)) }`,
+        indexUniqBranchIdConstraint(migration.name),
+    ]));
 
     await queryRunner.query(`
         INSERT INTO "public"."index_meta" ("name", "target_type")
@@ -298,7 +366,7 @@ async function addIndexFields(queryRunner: QueryRunner, migration: AddIndexField
 
     for (const field of objectKeys(migration.fields)) {
         const def = migration.fields[field]!;
-        if (def.operators.length === 0) { throw new Error(`Empty operators list for field '${ field }' on index '${ migration.index }'`); }
+        if (def.conditions.length === 0) { throw new Error(`Empty conditions list for field '${ field }' on index '${ migration.index }'`); }
 
         const { type: targetType, prop: targetProp } = await resolvePath(field, indexTargetType, def.path);
 
@@ -307,15 +375,15 @@ async function addIndexFields(queryRunner: QueryRunner, migration: AddIndexField
 
 
         const indices = map(groupBy(
-            uniq(def.operators).map(op => ({ ...selectIndexType(op), op })),
+            uniq(def.conditions).map(op => ({ ...selectIndexType(op), op })),
             ({ index, opclass }) => `${ index }:${ opclass || "default" }`
         )).reduce((_indices, set) => {
             const one = atLeastOne(set)[0];
-            return [..._indices, { index: one.index, opclass: one.opclass, operators: set.map(({ op }) => op) }];
-        }, [] as { operators: KnownSearchConditionTypes[], index: string, opclass?: string }[]);
+            return [..._indices, { index: one.index, opclass: one.opclass, conditions: set.map(({ op }) => op) }];
+        }, [] as { conditions: KnownSearchConditionTypes[], index: string, opclass?: string }[]);
 
         for (const index of indices) {
-            const indexHash = hash([indexTableName, ...sortBy(index.operators, identity)].join(":"), 20);
+            const indexHash = hash([indexTableName, ...sortBy(index.conditions, identity)].join(":"), 20);
             if (index.opclass) {
                 await queryRunner.query(pgFormat(`CREATE INDEX %I ON "public".%I USING ${ index.index } (%I ${ index.opclass })`, [`SEARCH_IDX_${ indexHash }`, indexTableName, field]));
             } else {

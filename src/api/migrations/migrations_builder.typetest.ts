@@ -28,8 +28,8 @@ const migrations = builder
     .addIndex("t1", "unnecessaryIndex")
     .addIndex("t1", "someIndex")
     .addIndexFields("someIndex", {
-        f1: { operators: ["eq", "neq"], path: ["str"] },
-        f2: { operators: ["eq", "neq"], path: ["int"] },
+        f1: { conditions: ["eq", "neq"], path: ["str"] },
+        f2: { conditions: ["eq", "neq"], path: ["int"] },
     })
 
     .removeIndex("unnecessaryIndex")
@@ -233,17 +233,17 @@ builder.addType("t").addPrimitives("t", { prop: primitiveString() }).addIndex("t
     // @ts-expect-error — prop overrides internal
     id: {
         path: ["prop"],
-        operators: ["eq"],
+        conditions: ["eq"],
     },
 });
 
 builder.addType("t").addPrimitives("t", { prop: primitiveString() })
-    .addIndex("t", "idx").addIndexFields("idx", { prop: { path: ["prop"], operators: ["eq"] } })
+    .addIndex("t", "idx").addIndexFields("idx", { prop: { path: ["prop"], conditions: ["eq"] } })
     .addIndexFields("idx", {
         // @ts-expect-error — field already exists
         prop: {
             path: ["prop"],
-            operators: ["eq"],
+            conditions: ["eq"],
         },
     });
 

@@ -9,7 +9,7 @@ export type ReferenceMeta<Target extends string> = { reference_target: Target };
 export type PropertyMetadata = DataPrimitive | ReferenceMeta<string>;
 export type EntityMetadata = { [prop: string]: PropertyMetadata };
 
-export type IndexFieldMeta = { path: AtLeastOne<string>; operators: AtLeastOne<KnownSearchConditionTypes>; };
+export type IndexFieldMeta = { path: AtLeastOne<string>; conditions: AtLeastOne<KnownSearchConditionTypes>; };
 export type IndexMetadata<Target extends string> = { type: Target, fields: { [prop: string]: IndexFieldMeta } };
 
 export type DatabaseMetadata = { [type: string]: EntityMetadata | IndexMetadata<string> };

@@ -2,6 +2,8 @@ import * as gulp from "gulp";
 import { runOnce } from "./util/runOnce";
 import { execTask } from "./util/execTask";
 import { detectLog } from "./util/detectLog";
+import { format } from "util";
+import { devDbConnectionConfig } from "../config/dev_database_connection";
 
 
 export default () => {
@@ -25,4 +27,8 @@ export default () => {
         })
     ));
     gulp.task("kill_db", execTask("docker-compose -f ./devcontainer/docker-compose.yml down"));
+
+    const connectionString = format(`postgresql://%s:%s@%s:%s/%s`, devDbConnectionConfig.user, devDbConnectionConfig.password, devDbConnectionConfig.host, devDbConnectionConfig.port, devDbConnectionConfig.database);
+    gulp.task("dump_db", gulp.series("start_db", execTask(`docker-compose -f ./devcontainer/docker-compose.yml exec -T db pg_dump '${ connectionString }' > ./src/load/dump.sql`)));
+    gulp.task("load_db", gulp.series("start_db", execTask(`cat ./src/load/dump.sql | docker-compose -f ./devcontainer/docker-compose.yml exec -T db psql '${ connectionString }'`)));
 };

@@ -1,5 +1,5 @@
 import { ReadIdentifiedNode, ReadInternalRefNode, ReadReferenceNode } from "./request_structure";
-import { EntityDef, EntityRestriction } from "../../definition/entity";
+import { EntityRestriction } from "../../definition/entity";
 import { pgFormat } from "../../misc/pg_format";
 import { isNotNull, nevah, objectKeys } from "../../misc/typeguards";
 import { isDataPrimitive } from "../../definition/primitives";
@@ -35,36 +35,40 @@ export function generateBranchRangesCTE(branch?: BranchId) {
 }
 
 
+const targetAlias = (a: string) => `${ a }_target`;
+const branchAlias = (a: string) => `${ a }_branch`;
+const innerAlias = (a: string) => `${ a }_inner`;
 export function generateSql<Entity extends EntityRestriction<Entity>>(structure: ReadIdentifiedNode<Entity>): string {
-    const outerSelections = generateSelections(structure.type, structure.alias, structure.nested.map(n => ({ key: n.resultKey, target: n.tableName, alias: n.alias })), "outer");
-    const innerSelections = generateSelections(structure.type, "entity", structure.nested.filter(n => n.parentTargetColumn !== "id" && n.nodeType !== "internalReference").map(n => ({ key: n.resultKey, target: n.tableName, alias: n.alias })), "inner");
+    const { innerSelections, outerSelections } = generateSelections(structure);
     const composedJson = pgFormat(`
         SELECT %s /* outer selections */
-        FROM (
+        FROM (SELECT unnest($2::int[]) as id) %I /* target ids alias */
+        INNER JOIN LATERAL (
             SELECT %s /* inner selections */
-            FROM "public".%I entity
-            WHERE entity.id = ANY($2::int[]) /* Target IDs */
-            AND entity.at = (
-                SELECT "innerEntity"."at"
-                FROM branch_ranges br /* For each branch find latest matching version */
-                INNER JOIN LATERAL (
-                    SELECT "innerEntity"."at"
-                    FROM "public".%I "innerEntity"
-                    WHERE "innerEntity"."id" = "entity"."id"
-                        AND "innerEntity".branch = br.branch
-                        AND "innerEntity".at > br.start_version
-                        AND "innerEntity".at <= br.end_version
-                ) "innerEntity" on true
-                /* Only interested in the most recent version of the most recent matching branch */
-                ORDER BY br.branch DESC, "innerEntity".at DESC
-                LIMIT 1
-            )
-        ) %I /* alias */
+            FROM branch_ranges %I /* branch alias */
+            INNER JOIN "public".%I /* table */ %I /* inner alias */ ON true
+            WHERE /* inner alias */ %I.id = %I.id /* target ids alias */
+              AND /* inner alias */ %I.branch = /* branch alias */ %I.branch
+              AND /* inner alias */ %I.at > /* branch alias */ %I.start_version
+              AND /* inner alias */ %I.at <= /* branch alias */ %I.end_version
+            ORDER BY /* branch alias */ %I.branch DESC, /* inner alias */ %I.at DESC
+            LIMIT 1
+        ) %I /* alias */ ON true
         %s /* Nested joins */
     `, [
-        outerSelections, innerSelections,
-        structure.tableName, structure.tableName,
+        outerSelections,
+        targetAlias(structure.alias),
+        innerSelections,
+        branchAlias(structure.alias),
+        structure.tableName, innerAlias(structure.alias),
+
+        innerAlias(structure.alias), targetAlias(structure.alias),
+        innerAlias(structure.alias), branchAlias(structure.alias),
+        innerAlias(structure.alias), branchAlias(structure.alias),
+        innerAlias(structure.alias), branchAlias(structure.alias),
+        branchAlias(structure.alias), innerAlias(structure.alias),
         structure.alias,
+
         structure.nested.map(generateJoin).join("\n"),
     ]);
 
@@ -83,38 +87,49 @@ function generateJoin(structure: ReadReferenceNode<any> | ReadInternalRefNode): 
 
 
 function generateReferenceJoin<Entity extends EntityRestriction<Entity>>(structure: ReadReferenceNode<Entity>): string {
-    const outerSelections = generateSelections(structure.type, structure.alias, structure.nested.map(n => ({ key: n.resultKey, target: n.tableName, alias: n.alias })), "outer");
-    const innerSelections = generateSelections(structure.type, "entity", structure.nested.filter(n => n.parentTargetColumn !== "id" && n.nodeType !== "internalReference").map(n => ({ key: n.resultKey, target: n.tableName, alias: n.alias })), "inner");
+    const { innerSelections, outerSelections } = generateSelections(structure);
     const composedJson = pgFormat(`
         SELECT %s /* outer selections */
         FROM (
-            SELECT %s /* inner selections */
-            FROM "public".%I entity
+            SELECT DISTINCT id
+            FROM "public".%I /* table */ entity
             WHERE entity.%I /* own target column */ = %I.%I /* parent target column on parent alias */
-            AND entity.at = (
-                SELECT "innerEntity"."at"
-                FROM branch_ranges br /* For each branch find latest matching version */
-                INNER JOIN LATERAL (
-                    SELECT "innerEntity"."at"
-                    FROM "public".%I "innerEntity"
-                    WHERE "innerEntity"."id" = "entity"."id"
-                        AND "innerEntity".branch = br.branch
-                        AND "innerEntity".at > br.start_version
-                        AND "innerEntity".at <= br.end_version
-                ) "innerEntity" on true
-                /* Only interested in the most recent version of the most recent matching branch */
-                ORDER BY br.branch DESC, "innerEntity"."at" DESC
-                LIMIT 1
-            )
-        ) %I /* alias */
+            ORDER BY id ASC
+        ) %I /* target ids alias */
+        INNER JOIN LATERAL (
+            SELECT %s /* inner selections */
+            FROM branch_ranges %I /* branch alias */
+            INNER JOIN "public".%I /* table */ %I /* inner alias */ ON true
+            WHERE /* inner alias */ %I.id = %I.id /* target ids alias */
+              AND /* inner alias */ %I.branch = /* branch alias */ %I.branch
+              AND /* inner alias */ %I.at > /* branch alias */ %I.start_version
+              AND /* inner alias */ %I.at <= /* branch alias */ %I.end_version
+            ORDER BY /* branch alias */ %I.branch DESC, /* inner alias */ %I.at DESC
+            LIMIT 1
+        ) %I /* alias */ ON true
+
         %s /* Nested joins */
+
+        WHERE /* alias */ %I.%I /* own target column */ = %I.%I /* parent target column on parent alias */
     `, [
-        outerSelections, innerSelections,
+        outerSelections,
         structure.tableName,
         structure.ownTargetColumn, structure.parentAlias, structure.parentTargetColumn,
-        structure.tableName,
+        targetAlias(structure.alias),
+        innerSelections,
+        branchAlias(structure.alias),
+        structure.tableName, innerAlias(structure.alias),
+
+        innerAlias(structure.alias), targetAlias(structure.alias),
+        innerAlias(structure.alias), branchAlias(structure.alias),
+        innerAlias(structure.alias), branchAlias(structure.alias),
+        innerAlias(structure.alias), branchAlias(structure.alias),
+        branchAlias(structure.alias), innerAlias(structure.alias),
         structure.alias,
+
         structure.nested.map(generateJoin).join("\n"),
+
+        structure.alias, structure.ownTargetColumn, structure.parentAlias, structure.parentTargetColumn,
     ]);
 
     switch (structure.count) {
@@ -179,25 +194,29 @@ function generateInternalJoin(structure: ReadInternalRefNode): string {
     `, [structure.resultKey, composedJson, structure.alias]);
 }
 
+const formatSelections = (selections: ReadonlyArray<{ alias: string, prop: string }>) => selections.map(({ alias, prop }) => pgFormat(`%I.%I`, [alias, prop as string])).join(", ");
 function generateSelections<Entity extends EntityRestriction<Entity>>(
-    Type: EntityDef<Entity>,
-    ownAlias: string,
-    relations: { key: string, target: string, alias: string }[],
-    type: "inner" | "outer"
-): string {
-    const typeDef = new Type();
-
+    structure: ReadIdentifiedNode<Entity> | ReadReferenceNode<Entity>
+) {
+    const typeDef = new (structure.type)();
     const ownProperties = [
         ...internalReadKeys,
         ...objectKeys(typeDef)
             .map(prop => isDataPrimitive(typeDef[prop]) ? prop : null)
             .filter(isNotNull),
-    ].map(prop => ({ prop, alias: ownAlias }));
+    ];
 
-    const relationProps = relations.map(rel => ({
-        prop: type === "inner" ? refColumnName(rel.key, rel.target) : rel.key,
-        alias: type === "inner" ? ownAlias : rel.alias,
-    }));
-
-    return [...ownProperties, ...relationProps].map(({ alias, prop }) => pgFormat(`%I.%I`, [alias, prop as string])).join(", ");
+    const requestedInternalRefs = structure.nested.filter(n => n.nodeType === "internalReference").map(n => n.resultKey);
+    const innerReferenceColumns = structure.nested.filter(n => n.parentTargetColumn !== "id" && n.nodeType !== "internalReference").map(n => ({ alias: innerAlias(structure.alias), prop: refColumnName(n.resultKey, n.tableName) }));
+    return {
+        outerSelections: formatSelections([
+            ...ownProperties.filter(prop => !requestedInternalRefs.includes(prop as string)).map(prop => ({ alias: structure.alias, prop: prop as string })),
+            ...structure.nested.map(n => ({ alias: n.alias, prop: n.resultKey })),
+        ]),
+        innerSelections: formatSelections([
+            ...[structure.nodeType === "reference" && structure.ownTargetColumn !== "id" && innerReferenceColumns.every(c => c.prop !== structure.ownTargetColumn) ? { alias: innerAlias(structure.alias), prop: structure.ownTargetColumn } : null].filter(isNotNull),
+            ...ownProperties.map(prop => ({ alias: innerAlias(structure.alias), prop: prop as string })),
+            ...innerReferenceColumns,
+        ]),
+    };
 }
